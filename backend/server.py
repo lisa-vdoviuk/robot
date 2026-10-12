@@ -2,12 +2,12 @@
 """
 Rescue Robot dashboard server.
 Run from the project root: python3 backend/server.py -> https://<pi-ip>:8000
-Keep cert.pem, key.pem, settings.json and model files in the project root.
-HTTPS is enabled when both certificates exist and is needed for the browser microphone.
+Keep settings.json and model files in the project root.
+HTTPS certificates may be in the project root, backend/ or the launch directory.
 Install: sudo apt install python3-flask python3-picamera2 python3-gpiozero python3-lgpio alsa-utils
          pip install ultralytics ncnn --break-system-packages
 """
-import array, atexit, io, json, math, os, queue, re, struct, subprocess, tempfile, threading, time, wave
+import array, atexit, io, json, math, os, queue, re, ssl, struct, subprocess, tempfile, threading, time, wave
 from flask import Flask, Response, jsonify, request, send_file
 from gpiozero import DistanceSensor, Motor
 
@@ -419,10 +419,29 @@ def cleanup():
             m.stop()
 
 
+def https_context():
+    # Reuse existing certificates after moving server.py into backend/.
+    directories = dict.fromkeys((HERE, os.path.dirname(os.path.abspath(__file__)), os.getcwd()))
+    for directory in directories:
+        cert = os.path.join(directory, "cert.pem")
+        key = os.path.join(directory, "key.pem")
+        if os.path.isfile(cert) and os.path.isfile(key):
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(cert, key)
+            print(f"HTTPS enabled; certificates: {directory}", flush=True)
+            return context
+    raise RuntimeError(
+        "HTTPS certificates not found. Keep cert.pem and key.pem together in the project root or backend/. "
+        "To create them, run from the project root: "
+        "openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem "
+        "-days 365 -subj /CN=robot.local"
+    )
+
+
 if __name__ == "__main__":
+    tls = https_context()
     atexit.register(cleanup)
     for f in (control, sonar_loop, camera_loop, detect_loop, talk_worker):
         threading.Thread(target=f, daemon=True).start()
-    cert, key = os.path.join(HERE, "cert.pem"), os.path.join(HERE, "key.pem")
     app.run(host="0.0.0.0", port=8000, threaded=True,
-            ssl_context=(cert, key) if os.path.exists(cert) and os.path.exists(key) else None)
+            ssl_context=tls)
