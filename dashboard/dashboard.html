@@ -39,177 +39,761 @@ small{color:var(--mut)}label{display:block}
 </style>
 </head>
 <body>
-<header><h1>Rescue Robot</h1>
-<nav><a href="#operate" data-p="operate">Operate</a><a href="#tests" data-p="tests">Tests</a><a href="#settings" data-p="settings">Settings</a></nav>
-<span id="link">connected</span></header>
+<header>
+  <h1>Rescue Robot</h1>
+  <nav>
+    <a href="#operate" data-p="operate">Operate</a>
+    <a href="#tests" data-p="tests">Tests</a>
+    <a href="#settings" data-p="settings">Settings</a>
+  </nav>
+  <span id="link">connected</span>
+</header>
 
 <div class="page" id="operate">
   <div>
     <section>
-      <div class="cam"><img id="vidA" alt="Live camera view"><div id="alert" class="ban"></div><div id="warn" class="ban">Obstacle ahead: forward motion blocked</div>
-        <div class="hud">cam <b data-f="fps">-</b> fps | detector <b data-f="det_fps">-</b> fps, <b data-f="infer_ms">-</b> ms</div></div>
+      <div class="cam">
+        <img id="vidA" alt="Live camera view">
+        <div id="alert" class="ban"></div>
+        <div id="warn" class="ban">Рух заблоковано сонаром</div>
+        <div class="hud">
+          cam <b data-f="fps">-</b> fps |
+          detector <b data-f="det_fps">-</b> fps,
+          <b data-f="infer_ms">-</b> ms
+        </div>
+      </div>
+
       <div class="row">
-        <label style="flex:1;min-width:160px">Speed <b data-f="spv">60</b>%<input class="speed" type="range" min="20" max="100" value="60" style="width:100%"></label>
-        <div><button id="talk">Hold to talk (T)</button><div class="bar" title="Microphone level" style="margin-top:6px"><i id="mic"></i></div></div>
+        <label style="flex:1;min-width:160px">
+          Speed <b data-f="spv">60</b>%
+          <input class="speed" type="range" min="20" max="100"
+                 value="60" style="width:100%">
+        </label>
+        <div>
+          <button id="talk">Hold to talk (T)</button>
+          <div class="bar" title="Microphone level" style="margin-top:6px">
+            <i id="mic"></i>
+          </div>
+        </div>
         <button class="stop">STOP</button>
       </div>
-      <div class="row"><div class="pad"><button class="u" data-k="up">&#9650;</button><button class="l" data-k="left">&#9664;</button>
-        <button class="d" data-k="down">&#9660;</button><button class="r" data-k="right">&#9654;</button></div>
-        <small>Drive with the arrows, arrow keys or WASD. Space stops. Hold T to speak through the robot.</small></div>
+
+      <div class="row">
+        <div class="pad">
+          <button class="u" data-k="up">&#9650;</button>
+          <button class="l" data-k="left">&#9664;</button>
+          <button class="d" data-k="down">&#9660;</button>
+          <button class="r" data-k="right">&#9654;</button>
+        </div>
+        <small>
+          Drive with the arrows, arrow keys or WASD.
+          Space stops. Hold T to speak through the robot.
+        </small>
+      </div>
     </section>
   </div>
+
   <div>
-    <section><h2>Detection</h2>
-      <label><input id="det" type="checkbox"> YOLO: person and dog</label>
-      <div class="kv"><span>State</span><b data-f="det_state">off</b></div>
+    <section>
+      <h2>Detection</h2>
+      <label>
+        <input id="det" type="checkbox"> YOLO: person and dog
+      </label>
+      <div class="kv">
+        <span>State</span><b data-f="det_state">off</b>
+      </div>
     </section>
-    <section><h2>Robot</h2>
-      <div class="kv"><span>CPU temperature</span><b data-f="temp">-</b><span>CPU load</span><b data-f="cpu">-</b>
-      <span>Memory</span><b data-f="mem">-</b><span>Power</span><b data-f="thr">-</b><span>Motors L / R</span><b data-f="drv">0 / 0</b>
-      <span>Voice</span><b data-f="voice">idle</b></div>
-      <div style="margin-top:10px">Front sonar S1 <span data-f="d0">-</span> cm<div class="bar"><i data-b="0"></i></div>
-      Front sonar S2 <span data-f="d1">-</span> cm<div class="bar"><i data-b="1"></i></div></div>
-      <label><input class="safety" type="checkbox" checked> Sonar protection (no forward motion under <span data-f="sc">20</span> cm)</label>
+
+    <section>
+      <h2>Robot</h2>
+      <div class="kv">
+        <span>CPU temperature</span><b data-f="temp">-</b>
+        <span>CPU load</span><b data-f="cpu">-</b>
+        <span>Memory</span><b data-f="mem">-</b>
+        <span>Power</span><b data-f="thr">-</b>
+        <span>Motors L / R</span><b data-f="drv">0 / 0</b>
+        <span>Voice</span><b data-f="voice">idle</b>
+      </div>
+
+      <div style="margin-top:10px">
+        Передній сонар <span data-f="front_cm">-</span> cm
+        <div class="bar"><i data-b="front"></i></div>
+
+        Задній сонар <span data-f="rear_cm">-</span> cm
+        <div class="bar"><i data-b="rear"></i></div>
+      </div>
+
+      <label>
+        <input class="safety" type="checkbox" checked>
+        Захист сонарів: стоп у бік перешкоди на відстані
+        ≤ <span data-f="sc">20</span> cm
+      </label>
     </section>
-    <section><h2>Events</h2><div class="log" id="elog"></div></section>
+
+    <section>
+      <h2>Events</h2>
+      <div class="log" id="elog"></div>
+    </section>
   </div>
 </div>
 
 <div class="page" id="tests">
   <div>
-    <section><div class="cam"><img id="vidB" alt="Live camera view"></div></section>
-    <section><h2>Manual drive</h2>
+    <section>
+      <div class="cam">
+        <img id="vidB" alt="Live camera view">
+      </div>
+    </section>
+
+    <section>
+      <h2>Manual drive</h2>
       <div class="row" style="margin:0">
-        <div class="pad"><button class="u" data-k="up">&#9650;</button><button class="l" data-k="left">&#9664;</button>
-          <button class="d" data-k="down">&#9660;</button><button class="r" data-k="right">&#9654;</button></div>
+        <div class="pad">
+          <button class="u" data-k="up">&#9650;</button>
+          <button class="l" data-k="left">&#9664;</button>
+          <button class="d" data-k="down">&#9660;</button>
+          <button class="r" data-k="right">&#9654;</button>
+        </div>
         <button class="stop">STOP</button>
       </div>
     </section>
   </div>
+
   <div>
-    <section><h2>Module tests</h2>
+    <section>
+      <h2>Module tests</h2>
       <div class="tests">
-        <button data-t="sonar">Sonars</button><button data-t="camera">Camera</button>
-        <button data-t="speaker">Speaker</button><button data-t="mic">Microphone (2 s)</button>
-        <button data-t="echo">Echo: record and play back</button><button data-t="motors">Motors (lift the wheels)</button>
+        <button data-t="sonar">Sonars</button>
+        <button data-t="camera">Camera</button>
+        <button data-t="speaker">Speaker</button>
+        <button data-t="mic">Microphone (2 s)</button>
+        <button data-t="echo">Echo: record and play back</button>
+        <button data-t="motors">Motors (lift the wheels)</button>
       </div>
       <div class="log" id="tlog" style="margin-top:10px"></div>
     </section>
-    <small>The sonar guard and the 0.4 s lost-connection stop run on the robot, independent of this page.</small>
+
+    <small>
+      The sonar guard and the 0.4 s lost-connection stop run on the robot,
+      independent of this page.
+    </small>
   </div>
 </div>
 
 <div class="page" id="settings" style="grid-template-columns:minmax(0,680px)">
-  <section><h2>Calibration</h2><div id="sform"></div>
-    <div class="row"><button id="reset">Reset to defaults</button><small id="saved">Changes save automatically.</small></div></section>
+  <section>
+    <h2>Calibration</h2>
+    <div id="sform"></div>
+    <div class="row">
+      <button id="reset">Reset to defaults</button>
+      <small id="saved">Changes save automatically.</small>
+    </div>
+  </section>
 </div>
 
 <script>
-const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(r=>r.json());
-const log=(el,t,c)=>{const e=document.createElement('div');e.className=c||'';e.textContent=new Date().toLocaleTimeString()+'  '+t;$(el).prepend(e)};
-/* navigation: only the visible page keeps a video stream open */
-function nav(){const p=(location.hash||'#operate').slice(1);$$('.page').forEach(x=>x.classList.toggle('on',x.id===p));
-  $$('nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===p));
-  $('#vidA').src=p==='operate'?'/video':'';$('#vidB').src=p==='tests'?'/video':''}
-addEventListener('hashchange',nav);nav();
-/* driving */
-const keys=new Set(),map={ArrowUp:'up',w:'up',ArrowDown:'down',s:'down',ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right'};
-let speed=.6,last='0,0';
-const kk=e=>map[e.key.length>1?e.key:e.key.toLowerCase()];
-function vec(){const y=keys.has('up')-keys.has('down'),x=keys.has('right')-keys.has('left');
-  const l=y+x,r=y-x,m=Math.max(1,Math.abs(l),Math.abs(r));return[l/m*speed,r/m*speed]}
-const mark=()=>$$('.pad button').forEach(b=>b.classList.toggle('on',keys.has(b.dataset.k)));
-const halt=()=>{keys.clear();mark();post('/api/stop')};
-addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();halt();return}
-  if(e.key.toLowerCase()==='t'&&!e.repeat){talk(true);return}
-  const k=kk(e);if(k){e.preventDefault();keys.add(k);mark()}});
-addEventListener('keyup',e=>{if(e.key.toLowerCase()==='t'){talk(false);return}const k=kk(e);if(k){keys.delete(k);mark()}});
-addEventListener('blur',()=>{keys.clear();mark();talk(false)});
-$$('.pad button').forEach(b=>{b.addEventListener('pointerdown',()=>{keys.add(b.dataset.k);mark()});
-  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>{keys.delete(b.dataset.k);mark()}))});
-setInterval(()=>{const[l,r]=vec(),s=l+','+r;if(l||r||s!==last){post('/api/drive',{l,r}).catch(()=>{});last=s}},100);
-$$('.stop').forEach(b=>b.onclick=halt);
-$$('.speed').forEach(s=>s.oninput=e=>{speed=e.target.value/100;$$('.speed').forEach(x=>x.value=e.target.value);$$('[data-f=spv]').forEach(x=>x.textContent=e.target.value)});
-$$('.safety').forEach(c=>c.onchange=e=>post('/api/safety',{on:e.target.checked}));
-$('#det').onchange=e=>post('/api/detect',{on:e.target.checked});
-/* push-to-talk: 16 kHz mono PCM, sent live in ~85 ms chunks */
-let keep,gain=1,ac,micOK=false,talking=false,chain=Promise.resolve(),pending=0;
-let micInit=null,talkRequested=false,talkRequest=0,talkSession=null;
-async function initMic(){if(micInit)return micInit;
-  micInit=(async()=>{let st;try{if(micOK){await ac.resume();return true}
-    st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
-    ac=new AudioContext();const src=ac.createMediaStreamSource(st),p=ac.createScriptProcessor(4096,1,1);
-    keep={st,src,p};p.onaudioprocess=onAudio;src.connect(p);p.connect(ac.destination);micOK=true;log('#elog','Microphone ready ('+ac.state+')','ok');return true}
-  catch(e){if(st)st.getTracks().forEach(t=>t.stop());else if(keep)keep.st.getTracks().forEach(t=>t.stop());keep=null;micOK=false;
-    log('#elog','Microphone unavailable: '+e.message+(isSecureContext?'':' (open the page over https://)'),'bad');return false}})();
-  try{return await micInit}finally{micInit=null}}
-/* Keep chunks and stop requests ordered; a failed request must not poison the queue. */
-function queueTalk(body,session){const stop=body===null;if(!stop)pending++;
-  chain=chain.catch(e=>log('#elog','Talk queue recovered: '+e.message,'bad')).then(async()=>{
-    try{const r=await fetch(stop?'/api/talk/stop':'/api/talk',{method:'POST',...(stop?{}:{body})});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      if(!stop)session.sent++;
-    }catch(e){if(!stop)session.fails++;log('#elog','Talk '+(stop?'stop':'chunk')+' failed: '+e.message,'bad')}
-    finally{if(!stop)pending--;
-      else log('#elog','Talk: finished, '+session.sent+' chunks accepted'+(session.fails?', '+session.fails+' failed':''))}
-  });return chain}
-function onAudio(e){const d=e.inputBuffer.getChannelData(0);let pk=0;for(let i=0;i<d.length;i++)pk=Math.max(pk,Math.abs(d[i]));$('#mic').style.width=Math.min(100,pk*150)+'%';if(!talking||pending>8)return;const r=ac.sampleRate/16000,n=Math.floor(d.length/r),o=new Int16Array(n);
-  for(let i=0;i<n;i++){let s=0;const a=Math.floor(i*r),b=Math.max(a+1,Math.floor((i+1)*r));for(let j=a;j<b;j++)s+=d[j];o[i]=Math.max(-1,Math.min(1,s/(b-a)*gain))*32767}
-  queueTalk(o.buffer,talkSession)}
-async function talk(on){if(on===talkRequested)return;
-  talkRequested=on;const requestId=++talkRequest;
-  if(on){const ready=await initMic();if(requestId!==talkRequest||!talkRequested)return;
-    if(!ready){talkRequested=false;return}
-    talkSession={sent:0,fails:0};talking=true;log('#elog','Talk: transmitting');
-  }else{const session=talkSession;talking=false;talkSession=null;
-    if(session){log('#elog','Talk: stopped; finishing queued audio');queueTalk(null,session)}}
-  $('#talk').classList.toggle('on',talking)}
-const tb=$('#talk');tb.addEventListener('pointerdown',()=>talk(true));['pointerup','pointerleave','pointercancel'].forEach(ev=>tb.addEventListener(ev,()=>talk(false)));
-/* tests */
-$$('[data-t]').forEach(b=>b.onclick=async()=>{log('#tlog','Test: '+b.textContent+' ...');b.disabled=true;
-  try{const r=await post('/api/test/'+b.dataset.t);log('#tlog',r.msg,r.ok?'ok':'bad')}catch(e){log('#tlog','no connection to the robot','bad')}
-  b.disabled=false});
-/* status */
-let prevAlert='',prevBlocked=false,prevErr='';
-async function poll(){
-  try{const s=await (await fetch('/api/status')).json();
-    $('#link').textContent='connected';$('#link').className='';
-    const f={fps:s.cam?s.fps:'off',det_fps:s.detect?s.det_fps:'-',infer_ms:s.detect?s.infer_ms:'-',det_state:s.det_state,
-      temp:s.temp?s.temp+' \u00b0C':'-',cpu:s.cpu+' %',mem:s.mem+' %',thr:s.throttled==='0x0'?'OK':(s.throttled||'-'),
-      drv:s.drive.map(v=>v.toFixed(1)).join(' / '),voice:s.talking?'transmitting':'idle',d0:s.dist[0]??'-',d1:s.dist[1]??'-',sc:s.stop_cm};
-    for(const k in f)$$('[data-f='+k+']').forEach(e=>e.textContent=f[k]);
-    s.dist.forEach((d,i)=>{const b=$('[data-b="'+i+'"]');b.style.width=Math.min(d||0,100)+'%';b.className=d!=null&&d<s.stop_cm?'near':''});
-    $('#warn').style.display=s.blocked?'block':'none';
-    const al=s.alert.join(' + ');$('#alert').style.display=al?'block':'none';$('#alert').textContent=al.toUpperCase()+' DETECTED';
-    if(al!==prevAlert){if(al)log('#elog','Detected: '+al,'warn');prevAlert=al}
-    if(s.talk_err&&s.talk_err!==prevErr){log('#elog','Speaker error: '+s.talk_err,'bad');prevErr=s.talk_err}
-    if(s.blocked&&!prevBlocked)log('#elog','Forward motion blocked by sonar','warn');prevBlocked=s.blocked;
-    $('#det').checked=s.detect;$$('.safety').forEach(c=>c.checked=s.safety);
-  }catch(e){$('#link').textContent='no connection';$('#link').className='off'}}
-setInterval(poll,500);poll();
-/* settings */
-const SPEC=[
- ['stop_cm','Sonar stop distance (cm)',5,100,1,'Forward motion is blocked closer than this.'],
- ['watchdog','Lost-connection stop (s)',0.2,2,0.1,'Motors stop if no command arrives for this long.'],
- ['max_speed','Maximum motor speed',0.2,1,0.05,'Caps the motor power for all driving.'],
- ['trim_l','Left motor trim',0.5,1.5,0.01,'Tune left and right trim until the robot drives straight.'],
- ['trim_r','Right motor trim',0.5,1.5,0.01,''],
- ['det_conf','Detection confidence',0.1,0.9,0.05,'Lower finds more people but gives more false alarms.'],
- ['confirm','Frames to confirm a detection',1,10,1,'Consecutive frames needed before an alert is raised.'],
- ['imgsz','Detector input size (px)',160,640,32,'Smaller is faster, larger sees small or distant objects better.'],
- ['talk_gain','Talk volume gain',0.5,4,0.1,'Amplifies your voice before it plays on the robot.'],
- ['swap','Swap left and right motors',null,null,null,'Use if steering is mirrored.'],
- ['flip_camera','Rotate camera 180 degrees',null,null,null,'Applies after restarting the server.']];
-async function loadSettings(){const {cfg,defaults}=await (await fetch('/api/settings')).json();gain=+cfg.talk_gain||1;$('#sform').innerHTML='';
-  SPEC.forEach(([k,l,mn,mx,st,help])=>{const row=document.createElement('label');row.style.margin='14px 0';
-    row.innerHTML=mn===null?`<input type="checkbox" ${cfg[k]?'checked':''}> ${l}<br><small>${help}</small>`
-      :`${l}: <b>${cfg[k]}</b> <small>(default ${defaults[k]})</small><input type="range" min="${mn}" max="${mx}" step="${st}" value="${cfg[k]}" style="width:100%"><small>${help}</small>`;
-    const inp=row.querySelector('input');
-    inp.oninput=()=>{if(mn!==null)row.querySelector('b').textContent=inp.value};
-    inp.onchange=async()=>{const r=await post('/api/settings',{[k]:mn===null?inp.checked:+inp.value});gain=+r.cfg.talk_gain||1;$('#saved').textContent='Saved '+new Date().toLocaleTimeString()};
-    $('#sform').append(row)})}
-$('#reset').onclick=async()=>{await post('/api/settings',{reset:true});loadSettings()};
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+const post = (u, b) => fetch(u, {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify(b || {})
+}).then(r => r.json());
+
+const log = (el, t, c) => {
+  const e = document.createElement('div');
+  e.className = c || '';
+  e.textContent = new Date().toLocaleTimeString() + '  ' + t;
+  $(el).prepend(e);
+};
+
+/* Navigation: only the visible page keeps a video stream open. */
+function nav() {
+  const p = (location.hash || '#operate').slice(1);
+
+  $$('.page').forEach(x => {
+    x.classList.toggle('on', x.id === p);
+  });
+
+  $$('nav a').forEach(a => {
+    a.classList.toggle('on', a.dataset.p === p);
+  });
+
+  $('#vidA').src = p === 'operate' ? '/video' : '';
+  $('#vidB').src = p === 'tests' ? '/video' : '';
+}
+
+addEventListener('hashchange', nav);
+nav();
+
+/* Driving */
+const keys = new Set();
+const map = {
+  ArrowUp: 'up',
+  w: 'up',
+  ArrowDown: 'down',
+  s: 'down',
+  ArrowLeft: 'left',
+  a: 'left',
+  ArrowRight: 'right',
+  d: 'right'
+};
+
+let speed = .6;
+let last = '0,0';
+
+const kk = e => map[
+  e.key.length > 1 ? e.key : e.key.toLowerCase()
+];
+
+function vec() {
+  const y = keys.has('up') - keys.has('down');
+  const x = keys.has('right') - keys.has('left');
+  const l = y + x;
+  const r = y - x;
+  const m = Math.max(1, Math.abs(l), Math.abs(r));
+  return [l / m * speed, r / m * speed];
+}
+
+const mark = () => {
+  $$('.pad button').forEach(b => {
+    b.classList.toggle('on', keys.has(b.dataset.k));
+  });
+};
+
+const halt = () => {
+  keys.clear();
+  mark();
+  post('/api/stop');
+};
+
+addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    halt();
+    return;
+  }
+
+  if (e.key.toLowerCase() === 't' && !e.repeat) {
+    talk(true);
+    return;
+  }
+
+  const k = kk(e);
+  if (k) {
+    e.preventDefault();
+    keys.add(k);
+    mark();
+  }
+});
+
+addEventListener('keyup', e => {
+  if (e.key.toLowerCase() === 't') {
+    talk(false);
+    return;
+  }
+
+  const k = kk(e);
+  if (k) {
+    keys.delete(k);
+    mark();
+  }
+});
+
+addEventListener('blur', () => {
+  keys.clear();
+  mark();
+  talk(false);
+});
+
+$$('.pad button').forEach(b => {
+  b.addEventListener('pointerdown', () => {
+    keys.add(b.dataset.k);
+    mark();
+  });
+
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => {
+    b.addEventListener(ev, () => {
+      keys.delete(b.dataset.k);
+      mark();
+    });
+  });
+});
+
+setInterval(() => {
+  const [l, r] = vec();
+  const s = l + ',' + r;
+
+  if (l || r || s !== last) {
+    post('/api/drive', {l, r}).catch(() => {});
+    last = s;
+  }
+}, 100);
+
+$$('.stop').forEach(b => b.onclick = halt);
+
+$$('.speed').forEach(s => {
+  s.oninput = e => {
+    speed = e.target.value / 100;
+    $$('.speed').forEach(x => x.value = e.target.value);
+    $$('[data-f=spv]').forEach(x => {
+      x.textContent = e.target.value;
+    });
+  };
+});
+
+$$('.safety').forEach(c => {
+  c.onchange = e => post('/api/safety', {
+    on: e.target.checked
+  });
+});
+
+$('#det').onchange = e => post('/api/detect', {
+  on: e.target.checked
+});
+
+/* Push-to-talk: 16 kHz mono PCM. */
+let keep;
+let gain = 1;
+let ac;
+let micOK = false;
+let talking = false;
+let chain = Promise.resolve();
+let pending = 0;
+
+let micInit = null;
+let talkRequested = false;
+let talkRequest = 0;
+let talkSession = null;
+
+async function initMic() {
+  if (micInit) return micInit;
+
+  micInit = (async () => {
+    let st;
+
+    try {
+      if (micOK) {
+        await ac.resume();
+        return true;
+      }
+
+      st = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      });
+
+      ac = new AudioContext();
+
+      const src = ac.createMediaStreamSource(st);
+      const p = ac.createScriptProcessor(4096, 1, 1);
+
+      keep = {st, src, p};
+
+      p.onaudioprocess = onAudio;
+      src.connect(p);
+      p.connect(ac.destination);
+
+      micOK = true;
+
+      log(
+        '#elog',
+        'Microphone ready (' + ac.state + ')',
+        'ok'
+      );
+      return true;
+
+    } catch (e) {
+      if (st) {
+        st.getTracks().forEach(t => t.stop());
+      } else if (keep) {
+        keep.st.getTracks().forEach(t => t.stop());
+      }
+
+      keep = null;
+      micOK = false;
+
+      log(
+        '#elog',
+        'Microphone unavailable: ' + e.message +
+        (isSecureContext ? '' : ' (open the page over https://)'),
+        'bad'
+      );
+
+      return false;
+    }
+  })();
+
+  try {
+    return await micInit;
+  } finally {
+    micInit = null;
+  }
+}
+
+/* Preserve request order and recover after failures. */
+function queueTalk(body, session) {
+  const stop = body === null;
+
+  if (!stop) pending++;
+
+  chain = chain
+    .catch(e => {
+      log('#elog', 'Talk queue recovered: ' + e.message, 'bad');
+    })
+    .then(async () => {
+      try {
+        const r = await fetch(
+          stop ? '/api/talk/stop' : '/api/talk',
+          {
+            method: 'POST',
+            ...(stop ? {} : {body})
+          }
+        );
+
+        if (!r.ok) {
+          throw new Error('HTTP ' + r.status);
+        }
+
+        if (!stop) session.sent++;
+
+      } catch (e) {
+        if (!stop) session.fails++;
+
+        log(
+          '#elog',
+          'Talk ' + (stop ? 'stop' : 'chunk') +
+          ' failed: ' + e.message,
+          'bad'
+        );
+
+      } finally {
+        if (!stop) {
+          pending--;
+        } else {
+          log(
+            '#elog',
+            'Talk: finished, ' + session.sent +
+            ' chunks accepted' +
+            (session.fails ? ', ' + session.fails + ' failed' : '')
+          );
+        }
+      }
+    });
+
+  return chain;
+}
+
+function onAudio(e) {
+  const d = e.inputBuffer.getChannelData(0);
+
+  let pk = 0;
+  for (let i = 0; i < d.length; i++) {
+    pk = Math.max(pk, Math.abs(d[i]));
+  }
+
+  $('#mic').style.width = Math.min(100, pk * 150) + '%';
+
+  if (!talking || pending > 8) return;
+
+  const r = ac.sampleRate / 16000;
+  const n = Math.floor(d.length / r);
+  const o = new Int16Array(n);
+
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    const a = Math.floor(i * r);
+    const b = Math.max(a + 1, Math.floor((i + 1) * r));
+
+    for (let j = a; j < b; j++) {
+      s += d[j];
+    }
+
+    o[i] = Math.max(
+      -1,
+      Math.min(1, s / (b - a) * gain)
+    ) * 32767;
+  }
+
+  queueTalk(o.buffer, talkSession);
+}
+
+async function talk(on) {
+  if (on === talkRequested) return;
+
+  talkRequested = on;
+  const requestId = ++talkRequest;
+
+  if (on) {
+    const ready = await initMic();
+
+    if (requestId !== talkRequest || !talkRequested) {
+      return;
+    }
+
+    if (!ready) {
+      talkRequested = false;
+      return;
+    }
+
+    talkSession = {sent: 0, fails: 0};
+    talking = true;
+    log('#elog', 'Talk: transmitting');
+
+  } else {
+    const session = talkSession;
+    talking = false;
+    talkSession = null;
+
+    if (session) {
+      log('#elog', 'Talk: stopped; finishing queued audio');
+      queueTalk(null, session);
+    }
+  }
+
+  $('#talk').classList.toggle('on', talking);
+}
+
+const tb = $('#talk');
+
+tb.addEventListener('pointerdown', () => talk(true));
+
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => {
+  tb.addEventListener(ev, () => talk(false));
+});
+
+/* Tests */
+$$('[data-t]').forEach(b => {
+  b.onclick = async () => {
+    log('#tlog', 'Test: ' + b.textContent + ' ...');
+    b.disabled = true;
+
+    try {
+      const r = await post('/api/test/' + b.dataset.t);
+      log('#tlog', r.msg, r.ok ? 'ok' : 'bad');
+    } catch (e) {
+      log('#tlog', 'no connection to the robot', 'bad');
+    }
+
+    b.disabled = false;
+  };
+});
+
+/* Status */
+let prevAlert = '';
+let prevBlocked = '';
+let prevErr = '';
+
+async function poll() {
+  try {
+    const s = await (await fetch('/api/status')).json();
+
+    $('#link').textContent = 'connected';
+    $('#link').className = '';
+
+    const f = {
+      fps: s.cam ? s.fps : 'off',
+      det_fps: s.detect ? s.det_fps : '-',
+      infer_ms: s.detect ? s.infer_ms : '-',
+      det_state: s.det_state,
+      temp: s.temp ? s.temp + ' \u00b0C' : '-',
+      cpu: s.cpu + ' %',
+      mem: s.mem + ' %',
+      thr: s.throttled === '0x0' ? 'OK' : (s.throttled || '-'),
+      drv: s.testing
+        ? 'test running'
+        : s.applied_drive.map(v => v.toFixed(1)).join(' / '),
+      voice: s.talking ? 'transmitting' : 'idle',
+      front_cm: s.front_cm ?? '-',
+      rear_cm: s.rear_cm ?? '-',
+      sc: s.stop_cm
+    };
+
+    for (const k in f) {
+      $$('[data-f=' + k + ']').forEach(e => {
+        e.textContent = f[k];
+      });
+    }
+
+    [
+      ['front', s.front_cm],
+      ['rear', s.rear_cm]
+    ].forEach(([side, d]) => {
+      const b = $('[data-b="' + side + '"]');
+      b.style.width = Math.min(d || 0, 100) + '%';
+      b.className = d != null && d <= s.stop_cm ? 'near' : '';
+    });
+
+    $('#warn').style.display = s.blocked ? 'block' : 'none';
+
+    const blockedKey = s.blocked
+      ? (s.blocked_by || []).join(',')
+      : '';
+
+    const blockedText = blockedKey === 'front'
+      ? 'Перешкода спереду: рух у її бік заблоковано'
+      : blockedKey === 'rear'
+        ? 'Перешкода ззаду: рух у її бік заблоковано'
+        : 'Перешкоди спереду та ззаду: рух заблоковано';
+
+    $('#warn').textContent = blockedText;
+
+    const al = s.alert.join(' + ');
+    $('#alert').style.display = al ? 'block' : 'none';
+    $('#alert').textContent = al.toUpperCase() + ' DETECTED';
+
+    if (al !== prevAlert) {
+      if (al) log('#elog', 'Detected: ' + al, 'warn');
+      prevAlert = al;
+    }
+
+    if (s.talk_err && s.talk_err !== prevErr) {
+      log('#elog', 'Speaker error: ' + s.talk_err, 'bad');
+      prevErr = s.talk_err;
+    }
+
+    if (blockedKey && blockedKey !== prevBlocked) {
+      log('#elog', blockedText, 'warn');
+    }
+    prevBlocked = blockedKey;
+
+    $('#det').checked = s.detect;
+
+    $$('.safety').forEach(c => {
+      c.checked = s.safety;
+    });
+
+  } catch (e) {
+    $('#link').textContent = 'no connection';
+    $('#link').className = 'off';
+  }
+}
+
+setInterval(poll, 500);
+poll();
+
+/* Settings */
+const SPEC = [
+  [
+    'stop_cm',
+    'Sonar stop distance (cm)',
+    5, 100, 1,
+    'At or below this distance: front blocks forward, rear blocks reverse. Pivot turns check both sensors.'
+  ],
+  [
+    'watchdog',
+    'Lost-connection stop (s)',
+    0.2, 2, 0.1,
+    'Motors stop if no command arrives for this long.'
+  ],
+  [
+    'max_speed',
+    'Maximum motor speed',
+    0.2, 1, 0.05,
+    'Caps the motor power for all driving.'
+  ],
+  [
+    'trim_l',
+    'Left motor trim',
+    0.5, 1.5, 0.01,
+    'Tune left and right trim until the robot drives straight.'
+  ],
+  [
+    'trim_r',
+    'Right motor trim',
+    0.5, 1.5, 0.01,
+    ''
+  ],
+  [
+    'det_conf',
+    'Detection confidence',
+    0.1, 0.9, 0.05,
+    'Lower finds more people but gives more false alarms.'
+  ],
+  [
+    'confirm',
+    'Frames to confirm a detection',
+    1, 10, 1,
+    'Consecutive frames needed before an alert is raised.'
+  ],
+  [
+    'imgsz',
+    'Detector input size (px)',
+    160, 640, 32,
+    'Smaller is faster, larger sees small or distant objects better.'
+  ],
+  [
+    'talk_gain',
+    'Talk volume gain',
+    0.5, 4, 0.1,
+    'Amplifies your voice before it plays on the robot.'
+  ],
+  [
+    'swap',
+    'Swap left and right motors',
+    null, null, null,
+    'Use if steering is mirrored.'
+  ],
+  [
+    'flip_camera',
+    'Rotate camera 180 degrees',
+    null, null, null,
+    'Applies after restarting the server.'
+  ]
+];
+
+async function loadSettings() {
+  const {cfg, defaults} = await (
+    await fetch('/api/settings')
+  ).json();
+
+  gain = +cfg.talk_gain || 1;
+  $('#sform').innerHTML = '';
+
+  SPEC.forEach(([k, l, mn, mx, st, help]) => {
+    const row = document.createElement('label');
+    row.style.margin = '14px 0';
+
+    row.innerHTML = mn === null
+      ? `<input type="checkbox" ${cfg[k] ? 'checked' : ''}>
+         ${l}<br><small>${help}</small>`
+      : `${l}: <b>${cfg[k]}</b>
+         <small>(default ${defaults[k]})</small>
+         <input type="range" min="${mn}" max="${mx}"
+                step="${st}" value="${cfg[k]}" style="width:100%">
+         <small>${help}</small>`;
+
+    const inp = row.querySelector('input');
+
+    inp.oninput = () => {
+      if (mn !== null) {
+        row.querySelector('b').textContent = inp.value;
+      }
+    };
+
+    inp.onchange = async () => {
+      const r = await post('/api/settings', {
+        [k]: mn === null ? inp.checked : +inp.value
+      });
+
+      gain = +r.cfg.talk_gain || 1;
+
+      $('#saved').textContent =
+        'Saved ' + new Date().toLocaleTimeString();
+    };
+
+    $('#sform').append(row);
+  });
+}
+
+$('#reset').onclick = async () => {
+  await post('/api/settings', {reset: true});
+  loadSettings();
+};
+
 loadSettings();
 </script>
 </body>
