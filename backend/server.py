@@ -1,31 +1,39 @@
 #!/usr/bin/env python3
 """
 Rescue Robot dashboard server.
-Run from the project root: python3 backend/server.py -> https://<pi-ip>:8000
+Run from the project root: python3 backend/server.py
 Keep settings.json and model files in the project root.
-HTTPS certificates may be in the project root, backend/ or the launch directory.
-Install: sudo apt install python3-flask python3-picamera2 python3-gpiozero python3-lgpio alsa-utils
-         pip install ultralytics ncnn --break-system-packages
+HTTPS certificates may be in the project root, backend/ or launch directory.
 """
-import array, atexit, io, json, math, os, queue, re, ssl, struct, subprocess, tempfile, threading, time, wave
+import array, atexit, io, json, math, os, queue, re, ssl
+import struct, subprocess, tempfile, threading, time, wave
+
 from flask import Flask, Response, jsonify, request, send_file
 from gpiozero import DistanceSensor, Motor
+from imu import MPU6050
 
 # ---------- CONFIG ----------
 LEFT = dict(forward=16, backward=26, enable=13)
 RIGHT = dict(forward=5, backward=6, enable=12)
-SONARS = [dict(echo=24, trigger=23), dict(echo=27, trigger=17)]
 
-# User confirmed: original S2 faces forward; original S1 faces backward.
+SONARS = [
+    dict(echo=24, trigger=23),
+    dict(echo=27, trigger=17),
+]
+
+# Original S2 is front; original S1 is rear.
 FRONT_SONAR, REAR_SONAR = 1, 0
 
 SPK = "plughw:CARD=MAX98357A,DEV=0"
 MIC = "auto"
+
 CLASSES = {0: "person", 16: "dog"}
-COLORS = {"person": (176, 198, 60), "dog": (36, 165, 245)}
+COLORS = {
+    "person": (176, 198, 60),
+    "dog": (36, 165, 245),
+}
 MODEL = "yolo11n"
 
-# Resolve shared files independently of the working directory.
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DASHBOARD_FILE = os.path.join(HERE, "dashboard", "dashboard.html")
 CFG_FILE = os.path.join(HERE, "settings.json")
@@ -45,6 +53,7 @@ DEFAULTS = dict(
 )
 
 CFG = dict(DEFAULTS)
+
 try:
     CFG.update({
         k: v
@@ -57,9 +66,7 @@ except Exception:
 app = Flask(__name__)
 
 S = dict(
-    l=0.0,
-    r=0.0,
-    t=0.0,
+    l=0.0, r=0.0, t=0.0,
     safety=True,
     blocked=False,
     testing=False,
@@ -79,6 +86,7 @@ S = dict(
 frame, out = dict(jpg=None), dict(jpg=None)
 cond = threading.Condition()
 talk_q = queue.Queue(maxsize=60)
+imu = MPU6050(bus_number=1)
 
 
 def mk(cls, **kw):
@@ -119,11 +127,7 @@ def sonar_ranges():
 
 
 def obstacle_blocks(l, r, front_cm, rear_cm, stop_cm, enabled):
-    """Block the whole command if either wheel moves toward a near obstacle.
-
-    Pivot turns involve both directions, so either near sensor blocks them.
-    These two sensors do not measure side clearance.
-    """
+    """Stop the whole command if a wheel moves toward a near obstacle."""
     if not enabled:
         return []
 
@@ -167,12 +171,8 @@ def control():
             front_cm, rear_cm = sonar_ranges()
 
             S["blocked_by"] = obstacle_blocks(
-                a,
-                b,
-                front_cm,
-                rear_cm,
-                CFG["stop_cm"],
-                S["safety"],
+                a, b, front_cm, rear_cm,
+                CFG["stop_cm"], S["safety"],
             )
             S["blocked"] = bool(S["blocked_by"])
 
@@ -195,8 +195,7 @@ def sonar_loop():
             if s is not None:
                 hist[i] = (hist[i] + [s.distance * 100])[-3:]
                 S["dist"][i] = round(
-                    sorted(hist[i])[len(hist[i]) // 2],
-                    1,
+                    sorted(hist[i])[len(hist[i]) // 2], 1
                 )
                 time.sleep(0.05)
 
@@ -209,6 +208,7 @@ def camera_loop():
         from libcamera import Transform
 
         cam = Picamera2()
+
         cam.configure(
             cam.create_video_configuration(
                 main={"size": (640, 480)},
@@ -218,8 +218,10 @@ def camera_loop():
                 ),
             )
         )
+
         cam.options["quality"] = 70
         cam.start()
+
     except Exception as e:
         print("Camera unavailable:", e)
         return
@@ -238,6 +240,7 @@ def camera_loop():
             cond.notify_all()
 
         n += 1
+
         if time.time() - t0 >= 2:
             S["fps"] = round(n / (time.time() - t0), 1)
             n, t0 = 0, time.time()
@@ -251,11 +254,11 @@ def load_model():
     try:
         if not os.path.isdir(os.path.join(HERE, ncnn)):
             YOLO(os.path.join(HERE, f"{MODEL}.pt")).export(
-                format="ncnn",
-                imgsz=320,
+                format="ncnn", imgsz=320
             )
 
         return YOLO(os.path.join(HERE, ncnn), task="detect")
+
     except Exception as e:
         print("NCNN unavailable, using PyTorch:", e)
         return YOLO(os.path.join(HERE, f"{MODEL}.pt"))
@@ -288,6 +291,7 @@ def detect_loop():
             )
 
             t = time.time()
+
             res = model(
                 img,
                 classes=list(CLASSES),
@@ -310,10 +314,7 @@ def detect_loop():
                 cv2.rectangle(img, (x1, y1), (x2, y2), col, 3)
 
                 (tw, th), _ = cv2.getTextSize(
-                    txt,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    2,
+                    txt, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
                 )
 
                 ty = y1 if y1 > th + 8 else y1 + th + 8
@@ -353,6 +354,7 @@ def detect_loop():
                 cond.notify_all()
 
             n += 1
+
             if time.time() - t0 >= 2:
                 S["det_fps"] = round(n / (time.time() - t0), 1)
                 n, t0 = 0, time.time()
@@ -429,10 +431,7 @@ def find_mic():
         return None
 
     pick = next(
-        (
-            c for c in cards
-            if "usb" in (c[1] + c[2]).lower()
-        ),
+        (c for c in cards if "usb" in (c[1] + c[2]).lower()),
         cards[0],
     )
 
@@ -445,9 +444,7 @@ def record(sec):
 
     if dev is None:
         return path, subprocess.CompletedProcess(
-            [],
-            1,
-            "",
+            [], 1, "",
             "no microphone found (arecord -l is empty): plug in the USB mic",
         )
 
@@ -484,20 +481,18 @@ def t_sonar():
     d = sonar_ranges()
     ok = all(x is not None and 2 < x < 299 for x in d)
 
-    return (
-        ok,
+    return ok, (
         f"Front {d[0]} cm, rear {d[1]} cm"
-        + ("" if ok else " (no echo: check Echo wire, divider, 5V)"),
+        + ("" if ok else " (no echo: check Echo wire, divider, 5V)")
     )
 
 
 def t_camera():
     j = frame["jpg"]
 
-    return (
-        bool(j),
+    return bool(j), (
         f"frame {len(j)//1024} KB, {S['fps']} fps"
-        if j else "no frames (check ribbon cable / picamera2)",
+        if j else "no frames (check ribbon cable / picamera2)"
     )
 
 
@@ -506,10 +501,9 @@ def t_speaker():
     beep(p)
     r = play(p)
 
-    return (
-        r.returncode == 0,
+    return r.returncode == 0, (
         "440 Hz tone played, did you hear it?"
-        if r.returncode == 0 else r.stderr.strip()[:120],
+        if r.returncode == 0 else r.stderr.strip()[:120]
     )
 
 
@@ -521,14 +515,13 @@ def t_mic():
 
     rms, peak = levels(p)
 
-    return (
-        peak > -40,
+    return peak > -40, (
         f"level {rms:.0f} dB, peak {peak:.0f} dB"
         + (
             ""
             if peak > -40
             else " (too quiet: speak or clap while recording)"
-        ),
+        )
     )
 
 
@@ -549,9 +542,8 @@ def t_motors():
             drive(motors[i], 0)
             time.sleep(0.3)
 
-    return (
-        all(m is not None for m in motors),
-        "left fwd/back, then right fwd/back (watch the wheels)",
+    return all(m is not None for m in motors), (
+        "left fwd/back, then right fwd/back (watch the wheels)"
     )
 
 
@@ -562,6 +554,7 @@ TESTS = dict(
     mic=t_mic,
     echo=t_echo,
     motors=t_motors,
+    imu=imu.test,
 )
 
 
@@ -582,8 +575,7 @@ def video():
             if j:
                 yield (
                     b"--f\r\nContent-Type: image/jpeg\r\n\r\n"
-                    + j
-                    + b"\r\n"
+                    + j + b"\r\n"
                 )
 
     return Response(
@@ -611,13 +603,17 @@ def api_stop():
 
 @app.post("/api/safety")
 def api_safety():
-    S["safety"] = bool(request.get_json(force=True).get("on", True))
+    S["safety"] = bool(
+        request.get_json(force=True).get("on", True)
+    )
     return jsonify(ok=True)
 
 
 @app.post("/api/detect")
 def api_detect():
-    S["detect"] = bool(request.get_json(force=True).get("on", False))
+    S["detect"] = bool(
+        request.get_json(force=True).get("on", False)
+    )
     S["det_state"] = "starting..." if S["detect"] else "off"
     return jsonify(ok=True)
 
@@ -660,12 +656,12 @@ def talk_worker():
         try:
             p.stdin.write(chunk)
             p.stdin.flush()
+
         except Exception as e:
             err = (
                 p.stderr.read().decode(errors="ignore")[:160]
                 if p.poll() is not None else ""
             )
-
             S["talk_err"] = (err or str(e)).strip()
             print("talk: speaker error:", S["talk_err"])
             p = None
@@ -704,6 +700,7 @@ def api_status():
     front_cm, rear_cm = sonar_ranges()
 
     return jsonify(
+        imu=imu.snapshot(),
         dist=S["dist"],
         front_cm=front_cm,
         rear_cm=rear_cm,
@@ -739,8 +736,17 @@ def api_test(name):
     if not fn:
         return jsonify(ok=False, msg="unknown test"), 404
 
+    # IMU diagnostics only inspect telemetry.
+    # They do not suspend the motor control loop.
+    if name == "imu":
+        ok, msg = imu.test()
+        return jsonify(ok=ok, msg=msg)
+
     if S["testing"]:
-        return jsonify(ok=False, msg="another test is still running")
+        return jsonify(
+            ok=False,
+            msg="another test is still running",
+        )
 
     S["testing"] = True
 
@@ -782,9 +788,10 @@ def cleanup():
         if m:
             m.stop()
 
+    imu.close()
+
 
 def https_context():
-    # Reuse certificates after moving server.py into backend/.
     directories = dict.fromkeys((
         HERE,
         os.path.dirname(os.path.abspath(__file__)),
@@ -798,7 +805,6 @@ def https_context():
         if os.path.isfile(cert) and os.path.isfile(key):
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(cert, key)
-
             print(
                 f"HTTPS enabled; certificates: {directory}",
                 flush=True,
@@ -818,6 +824,7 @@ def https_context():
 if __name__ == "__main__":
     tls = https_context()
     atexit.register(cleanup)
+    imu.start()
 
     for f in (
         control,
