@@ -1,18 +1,38 @@
 #!/usr/bin/env python3
 """
 Rescue Robot dashboard server.
-Run from the project root: python3 backend/server.py
-Keep settings.json and model files in the project root.
-HTTPS certificates may be in the project root, backend/ or launch directory.
+
+Run from the project root:
+    python3 backend/server.py
+
+Open:
+    https://<pi-ip>:8000
+
+Shared settings, certificates and model files live in the project root.
 """
-import array, atexit, io, json, math, os, queue, re, ssl
-import struct, subprocess, tempfile, threading, time, wave
+import array
+import atexit
+import io
+import json
+import math
+import os
+import queue
+import re
+import ssl
+import struct
+import subprocess
+import tempfile
+import threading
+import time
+import wave
 
 from flask import Flask, Response, jsonify, request, send_file
 from gpiozero import DistanceSensor, Motor
 from imu import MPU6050
 
+
 # ---------- CONFIG ----------
+
 LEFT = dict(forward=16, backward=26, enable=13)
 RIGHT = dict(forward=5, backward=6, enable=12)
 
@@ -21,17 +41,14 @@ SONARS = [
     dict(echo=27, trigger=17),
 ]
 
-# Original S2 is front; original S1 is rear.
+# Original S2 faces forward; original S1 faces backward.
 FRONT_SONAR, REAR_SONAR = 1, 0
 
 SPK = "plughw:CARD=MAX98357A,DEV=0"
 MIC = "auto"
 
 CLASSES = {0: "person", 16: "dog"}
-COLORS = {
-    "person": (176, 198, 60),
-    "dog": (36, 165, 245),
-}
+COLORS = {"person": (176, 198, 60), "dog": (36, 165, 245)}
 MODEL = "yolo11n"
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,20 +70,21 @@ DEFAULTS = dict(
 )
 
 CFG = dict(DEFAULTS)
-
 try:
-    CFG.update({
-        k: v
-        for k, v in json.load(open(CFG_FILE)).items()
-        if k in DEFAULTS
-    })
+    with open(CFG_FILE) as f:
+        CFG.update({
+            k: v for k, v in json.load(f).items()
+            if k in DEFAULTS
+        })
 except Exception:
     pass
 
 app = Flask(__name__)
 
 S = dict(
-    l=0.0, r=0.0, t=0.0,
+    l=0.0,
+    r=0.0,
+    t=0.0,
     safety=True,
     blocked=False,
     testing=False,
@@ -83,11 +101,16 @@ S = dict(
     applied_drive=[0.0, 0.0],
 )
 
-frame, out = dict(jpg=None), dict(jpg=None)
+frame = dict(jpg=None)
+out = dict(jpg=None)
 cond = threading.Condition()
 talk_q = queue.Queue(maxsize=60)
+control_lock = threading.Lock()
+
 imu = MPU6050(bus_number=1)
 
+
+# ---------- HARDWARE ----------
 
 def mk(cls, **kw):
     try:
@@ -127,15 +150,17 @@ def sonar_ranges():
 
 
 def obstacle_blocks(l, r, front_cm, rear_cm, stop_cm, enabled):
-    """Stop the whole command if a wheel moves toward a near obstacle."""
+    """
+    Block the whole command if either wheel moves toward a near obstacle.
+
+    Pivot turns check both directions.
+    These two sensors do not measure side clearance.
+    """
     if not enabled:
         return []
 
-    near = lambda d: (
-        d is not None
-        and math.isfinite(d)
-        and 0 <= d <= stop_cm
-    )
+    def near(d):
+        return d is not None and math.isfinite(d) and 0 <= d <= stop_cm
 
     blocked = []
 
@@ -150,39 +175,47 @@ def obstacle_blocks(l, r, front_cm, rear_cm, stop_cm, enabled):
 
 def control():
     while True:
-        l, r = S["l"], S["r"]
+        with control_lock:
+            l, r = S["l"], S["r"]
 
-        if time.time() - S["t"] > CFG["watchdog"]:
-            l = r = 0
+            if time.time() - S["t"] > CFG["watchdog"]:
+                l = r = 0
 
-        if not S["testing"]:
-            m = CFG["max_speed"]
-            a, b = (r, l) if CFG["swap"] else (l, r)
+            if imu.is_calibrating():
+                l = r = 0
 
-            a = max(
-                -1.0,
-                min(1.0, max(-m, min(m, a)) * CFG["trim_l"]),
-            )
-            b = max(
-                -1.0,
-                min(1.0, max(-m, min(m, b)) * CFG["trim_r"]),
-            )
+            if not S["testing"]:
+                m = CFG["max_speed"]
+                a, b = (r, l) if CFG["swap"] else (l, r)
 
-            front_cm, rear_cm = sonar_ranges()
+                a = max(
+                    -1.0,
+                    min(1.0, max(-m, min(m, a)) * CFG["trim_l"]),
+                )
+                b = max(
+                    -1.0,
+                    min(1.0, max(-m, min(m, b)) * CFG["trim_r"]),
+                )
 
-            S["blocked_by"] = obstacle_blocks(
-                a, b, front_cm, rear_cm,
-                CFG["stop_cm"], S["safety"],
-            )
-            S["blocked"] = bool(S["blocked_by"])
+                front_cm, rear_cm = sonar_ranges()
 
-            if S["blocked"]:
-                a = b = 0.0
+                S["blocked_by"] = obstacle_blocks(
+                    a,
+                    b,
+                    front_cm,
+                    rear_cm,
+                    CFG["stop_cm"],
+                    S["safety"],
+                )
+                S["blocked"] = bool(S["blocked_by"])
 
-            S["applied_drive"] = [a, b]
+                if S["blocked"]:
+                    a = b = 0.0
 
-            drive(motors[0], a)
-            drive(motors[1], b)
+                S["applied_drive"] = [a, b]
+
+                drive(motors[0], a)
+                drive(motors[1], b)
 
         time.sleep(0.05)
 
@@ -191,9 +224,9 @@ def sonar_loop():
     hist = [[], []]
 
     while True:
-        for i, s in enumerate(sonars):
-            if s is not None:
-                hist[i] = (hist[i] + [s.distance * 100])[-3:]
+        for i, sensor in enumerate(sonars):
+            if sensor is not None:
+                hist[i] = (hist[i] + [sensor.distance * 100])[-3:]
                 S["dist"][i] = round(
                     sorted(hist[i])[len(hist[i]) // 2], 1
                 )
@@ -202,13 +235,14 @@ def sonar_loop():
         time.sleep(0.05)
 
 
+# ---------- CAMERA / DETECTION ----------
+
 def camera_loop():
     try:
         from picamera2 import Picamera2
         from libcamera import Transform
 
         cam = Picamera2()
-
         cam.configure(
             cam.create_video_configuration(
                 main={"size": (640, 480)},
@@ -218,7 +252,6 @@ def camera_loop():
                 ),
             )
         )
-
         cam.options["quality"] = 70
         cam.start()
 
@@ -240,7 +273,6 @@ def camera_loop():
             cond.notify_all()
 
         n += 1
-
         if time.time() - t0 >= 2:
             S["fps"] = round(n / (time.time() - t0), 1)
             n, t0 = 0, time.time()
@@ -254,9 +286,9 @@ def load_model():
     try:
         if not os.path.isdir(os.path.join(HERE, ncnn)):
             YOLO(os.path.join(HERE, f"{MODEL}.pt")).export(
-                format="ncnn", imgsz=320
+                format="ncnn",
+                imgsz=320,
             )
-
         return YOLO(os.path.join(HERE, ncnn), task="detect")
 
     except Exception as e:
@@ -271,7 +303,8 @@ def detect_loop():
 
     while True:
         if not S["detect"] or frame["jpg"] is None:
-            S["alert"], n, t0 = [], 0, time.time()
+            S["alert"] = []
+            n, t0 = 0, time.time()
             time.sleep(0.2)
             continue
 
@@ -291,7 +324,6 @@ def detect_loop():
             )
 
             t = time.time()
-
             res = model(
                 img,
                 classes=list(CLASSES),
@@ -303,18 +335,21 @@ def detect_loop():
             S["infer_ms"] = round((time.time() - t) * 1000)
             seen = set()
 
-            for b in res.boxes:
-                name = CLASSES[int(b.cls)]
+            for box in res.boxes:
+                name = CLASSES[int(box.cls)]
                 seen.add(name)
 
-                x1, y1, x2, y2 = map(int, b.xyxy[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
                 col = COLORS[name]
-                txt = f"{name.capitalize()} {float(b.conf):.0%}"
+                txt = f"{name.capitalize()} {float(box.conf):.0%}"
 
                 cv2.rectangle(img, (x1, y1), (x2, y2), col, 3)
 
                 (tw, th), _ = cv2.getTextSize(
-                    txt, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                    txt,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    2,
                 )
 
                 ty = y1 if y1 > th + 8 else y1 + th + 8
@@ -326,7 +361,6 @@ def detect_loop():
                     col,
                     -1,
                 )
-
                 cv2.putText(
                     img,
                     txt,
@@ -341,8 +375,8 @@ def detect_loop():
                 streak[c] = streak[c] + 1 if c in seen else 0
 
             S["alert"] = [
-                c for c, k in streak.items()
-                if k >= CFG["confirm"]
+                c for c, count in streak.items()
+                if count >= CFG["confirm"]
             ]
 
             with cond:
@@ -354,7 +388,6 @@ def detect_loop():
                 cond.notify_all()
 
             n += 1
-
             if time.time() - t0 >= 2:
                 S["det_fps"] = round(n / (time.time() - t0), 1)
                 n, t0 = 0, time.time()
@@ -365,6 +398,8 @@ def detect_loop():
             model = None
             print("Detection error:", e)
 
+
+# ---------- SYSTEM / AUDIO HELPERS ----------
 
 def sh(cmd):
     try:
@@ -379,33 +414,30 @@ def sh(cmd):
 
 
 def sysinfo():
-    m = {
-        l.split(":")[0]: int(l.split()[1])
-        for l in open("/proc/meminfo")
-        if ":" in l
-    }
+    with open("/proc/meminfo") as f:
+        m = {
+            line.split(":")[0]: int(line.split()[1])
+            for line in f
+            if ":" in line
+        }
 
-    return (
-        round(100 * (1 - m["MemAvailable"] / m["MemTotal"])),
-        round(os.getloadavg()[0] / os.cpu_count() * 100),
-    )
+    memory = round(100 * (1 - m["MemAvailable"] / m["MemTotal"]))
+    cpu = round(os.getloadavg()[0] / os.cpu_count() * 100)
+    return memory, cpu
 
 
-# ---------- TESTS ----------
 def beep(path, freq=440, dur=1.2, rate=48000):
     with wave.open(path, "wb") as w:
         w.setnchannels(2)
         w.setsampwidth(2)
         w.setframerate(rate)
 
+        values = (
+            int(12000 * math.sin(2 * math.pi * freq * i / rate))
+            for i in range(int(rate * dur))
+        )
         w.writeframes(
-            b"".join(
-                struct.pack("<hh", v, v)
-                for v in (
-                    int(12000 * math.sin(2 * math.pi * freq * i / rate))
-                    for i in range(int(rate * dur))
-                )
-            )
+            b"".join(struct.pack("<hh", v, v) for v in values)
         )
 
 
@@ -434,7 +466,6 @@ def find_mic():
         (c for c in cards if "usb" in (c[1] + c[2]).lower()),
         cards[0],
     )
-
     return f"plughw:CARD={pick[1]},DEV={pick[3]}"
 
 
@@ -444,11 +475,13 @@ def record(sec):
 
     if dev is None:
         return path, subprocess.CompletedProcess(
-            [], 1, "",
+            [],
+            1,
+            "",
             "no microphone found (arecord -l is empty): plug in the USB mic",
         )
 
-    r = subprocess.run(
+    result = subprocess.run(
         [
             "arecord", "-q", "-D", dev,
             "-d", str(sec),
@@ -461,77 +494,81 @@ def record(sec):
         text=True,
         timeout=sec + 5,
     )
-
-    return path, r
+    return path, result
 
 
 def levels(path):
     with wave.open(path) as w:
-        a = array.array("h", w.readframes(w.getnframes()))
+        samples = array.array("h", w.readframes(w.getnframes()))
 
-    db = lambda v: 20 * math.log10(max(v, 1) / 32768)
+    def db(v):
+        return 20 * math.log10(max(v, 1) / 32768)
 
-    return (
-        db(math.sqrt(sum(x * x for x in a) / max(len(a), 1))),
-        db(max((abs(x) for x in a), default=0)),
+    rms = math.sqrt(
+        sum(x * x for x in samples) / max(len(samples), 1)
     )
+    peak = max((abs(x) for x in samples), default=0)
+    return db(rms), db(peak)
 
+
+# ---------- MODULE TESTS ----------
 
 def t_sonar():
     d = sonar_ranges()
     ok = all(x is not None and 2 < x < 299 for x in d)
 
-    return ok, (
-        f"Front {d[0]} cm, rear {d[1]} cm"
-        + ("" if ok else " (no echo: check Echo wire, divider, 5V)")
-    )
+    msg = f"Front {d[0]} cm, rear {d[1]} cm"
+    if not ok:
+        msg += " (no echo: check Echo wire, divider, 5V)"
+
+    return ok, msg
 
 
 def t_camera():
-    j = frame["jpg"]
-
-    return bool(j), (
-        f"frame {len(j)//1024} KB, {S['fps']} fps"
-        if j else "no frames (check ribbon cable / picamera2)"
+    jpg = frame["jpg"]
+    msg = (
+        f"frame {len(jpg) // 1024} KB, {S['fps']} fps"
+        if jpg
+        else "no frames (check ribbon cable / picamera2)"
     )
+    return bool(jpg), msg
 
 
 def t_speaker():
-    p = os.path.join(tempfile.gettempdir(), "beep.wav")
-    beep(p)
-    r = play(p)
+    path = os.path.join(tempfile.gettempdir(), "beep.wav")
+    beep(path)
+    result = play(path)
 
-    return r.returncode == 0, (
+    msg = (
         "440 Hz tone played, did you hear it?"
-        if r.returncode == 0 else r.stderr.strip()[:120]
+        if result.returncode == 0
+        else result.stderr.strip()[:120]
     )
+    return result.returncode == 0, msg
 
 
 def t_mic():
-    p, r = record(2)
+    path, result = record(2)
 
-    if r.returncode != 0:
-        return False, r.stderr.strip()[:120] or "arecord failed"
+    if result.returncode != 0:
+        return False, result.stderr.strip()[:120] or "arecord failed"
 
-    rms, peak = levels(p)
+    rms, peak = levels(path)
+    msg = f"level {rms:.0f} dB, peak {peak:.0f} dB"
 
-    return peak > -40, (
-        f"level {rms:.0f} dB, peak {peak:.0f} dB"
-        + (
-            ""
-            if peak > -40
-            else " (too quiet: speak or clap while recording)"
-        )
-    )
+    if peak <= -40:
+        msg += " (too quiet: speak or clap while recording)"
+
+    return peak > -40, msg
 
 
 def t_echo():
-    p, r = record(3)
+    path, result = record(3)
 
-    if r.returncode != 0:
+    if result.returncode != 0:
         return False, "recording failed"
 
-    return play(p).returncode == 0, "recorded 3 s and played it back"
+    return play(path).returncode == 0, "recorded 3 s and played it back"
 
 
 def t_motors():
@@ -542,8 +579,9 @@ def t_motors():
             drive(motors[i], 0)
             time.sleep(0.3)
 
-    return all(m is not None for m in motors), (
-        "left fwd/back, then right fwd/back (watch the wheels)"
+    return (
+        all(m is not None for m in motors),
+        "left fwd/back, then right fwd/back (watch the wheels)",
     )
 
 
@@ -558,7 +596,59 @@ TESTS = dict(
 )
 
 
+# ---------- AUDIO STREAM ----------
+
+def talk_worker():
+    """Play 16 kHz mono PCM in a dedicated worker."""
+    player = None
+
+    while True:
+        chunk = talk_q.get()
+
+        if chunk is None:
+            if player:
+                try:
+                    player.stdin.close()
+                    player.wait(timeout=3)
+                except Exception:
+                    player.kill()
+
+            player = None
+            continue
+
+        if player is None or player.poll() is not None:
+            player = subprocess.Popen(
+                [
+                    "aplay", "-q", "-D", SPK,
+                    "-t", "raw",
+                    "-f", "S16_LE",
+                    "-r", "16000",
+                    "-c", "1",
+                    "-B", "200000",
+                ],
+                stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            S["talk_err"] = ""
+            print("talk: aplay started")
+
+        try:
+            player.stdin.write(chunk)
+            player.stdin.flush()
+
+        except Exception as e:
+            err = (
+                player.stderr.read().decode(errors="ignore")[:160]
+                if player.poll() is not None
+                else ""
+            )
+            S["talk_err"] = (err or str(e)).strip()
+            print("talk: speaker error:", S["talk_err"])
+            player = None
+
+
 # ---------- ROUTES ----------
+
 @app.route("/")
 def index():
     return send_file(DASHBOARD_FILE)
@@ -570,12 +660,13 @@ def video():
         while True:
             with cond:
                 cond.wait(timeout=1)
-                j = out["jpg"]
+                jpg = out["jpg"]
 
-            if j:
+            if jpg:
                 yield (
                     b"--f\r\nContent-Type: image/jpeg\r\n\r\n"
-                    + j + b"\r\n"
+                    + jpg
+                    + b"\r\n"
                 )
 
     return Response(
@@ -587,11 +678,20 @@ def video():
 @app.post("/api/drive")
 def api_drive():
     j = request.get_json(force=True)
-    S.update(
-        l=float(j.get("l", 0)),
-        r=float(j.get("r", 0)),
-        t=time.time(),
-    )
+
+    with control_lock:
+        if imu.is_calibrating():
+            return jsonify(
+                ok=False,
+                msg="IMU calibration running",
+            ), 409
+
+        S.update(
+            l=float(j.get("l", 0)),
+            r=float(j.get("r", 0)),
+            t=time.time(),
+        )
+
     return jsonify(ok=True)
 
 
@@ -599,6 +699,36 @@ def api_drive():
 def api_stop():
     S.update(l=0.0, r=0.0, t=0.0)
     return jsonify(ok=True)
+
+
+@app.post("/api/imu/calibrate")
+def api_imu_calibrate():
+    with control_lock:
+        if S["testing"]:
+            return jsonify(
+                ok=False,
+                msg="Wait for hardware test to finish",
+            ), 409
+
+        ok, msg = imu.start_calibration()
+
+        if ok:
+            S.update(
+                l=0.0,
+                r=0.0,
+                t=0.0,
+                applied_drive=[0.0, 0.0],
+            )
+            for m in motors:
+                drive(m, 0)
+
+    return jsonify(ok=ok, msg=msg), (202 if ok else 409)
+
+
+@app.post("/api/imu/zero")
+def api_imu_zero():
+    ok, msg = imu.zero_yaw()
+    return jsonify(ok=ok, msg=msg), (200 if ok else 409)
 
 
 @app.post("/api/safety")
@@ -616,55 +746,6 @@ def api_detect():
     )
     S["det_state"] = "starting..." if S["detect"] else "off"
     return jsonify(ok=True)
-
-
-def talk_worker():
-    """Play operator PCM in a dedicated worker thread."""
-    p = None
-
-    while True:
-        chunk = talk_q.get()
-
-        if chunk is None:
-            if p:
-                try:
-                    p.stdin.close()
-                    p.wait(timeout=3)
-                except Exception:
-                    p.kill()
-
-            p = None
-            continue
-
-        if p is None or p.poll() is not None:
-            p = subprocess.Popen(
-                [
-                    "aplay", "-q", "-D", SPK,
-                    "-t", "raw",
-                    "-f", "S16_LE",
-                    "-r", "16000",
-                    "-c", "1",
-                    "-B", "200000",
-                ],
-                stdin=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-
-            S["talk_err"] = ""
-            print("talk: aplay started")
-
-        try:
-            p.stdin.write(chunk)
-            p.stdin.flush()
-
-        except Exception as e:
-            err = (
-                p.stderr.read().decode(errors="ignore")[:160]
-                if p.poll() is not None else ""
-            )
-            S["talk_err"] = (err or str(e)).strip()
-            print("talk: speaker error:", S["talk_err"])
-            p = None
 
 
 @app.post("/api/talk")
@@ -692,7 +773,7 @@ def api_talk_stop():
 @app.get("/api/status")
 def api_status():
     mem, cpu = sysinfo()
-    t = (
+    temperature = (
         sh(["vcgencmd", "measure_temp"])
         .replace("temp=", "")
         .replace("'C", "")
@@ -710,7 +791,7 @@ def api_status():
         safety=S["safety"],
         fps=S["fps"],
         cam=S["cam"],
-        temp=t,
+        temp=temperature,
         throttled=sh(["vcgencmd", "get_throttled"]).replace(
             "throttled=", ""
         ),
@@ -736,22 +817,20 @@ def api_test(name):
     if not fn:
         return jsonify(ok=False, msg="unknown test"), 404
 
-    # IMU diagnostics only inspect telemetry.
-    # They do not suspend the motor control loop.
     if name == "imu":
         ok, msg = imu.test()
         return jsonify(ok=ok, msg=msg)
 
-    if S["testing"]:
-        return jsonify(
-            ok=False,
-            msg="another test is still running",
-        )
+    with control_lock:
+        if S["testing"] or imu.is_calibrating():
+            return jsonify(
+                ok=False,
+                msg="Test or calibration already running",
+            ), 409
 
-    S["testing"] = True
-
-    for m in motors:
-        drive(m, 0)
+        S["testing"] = True
+        for m in motors:
+            drive(m, 0)
 
     try:
         ok, msg = fn()
@@ -779,15 +858,18 @@ def api_settings_set():
         if k in DEFAULTS:
             CFG[k] = type(DEFAULTS[k])(v)
 
-    json.dump(CFG, open(CFG_FILE, "w"), indent=2)
+    with open(CFG_FILE, "w") as f:
+        json.dump(CFG, f, indent=2)
+
     return jsonify(ok=True, cfg=CFG)
 
+
+# ---------- STARTUP / CLEANUP ----------
 
 def cleanup():
     for m in motors:
         if m:
             m.stop()
-
     imu.close()
 
 
@@ -826,14 +908,14 @@ if __name__ == "__main__":
     atexit.register(cleanup)
     imu.start()
 
-    for f in (
+    for worker in (
         control,
         sonar_loop,
         camera_loop,
         detect_loop,
         talk_worker,
     ):
-        threading.Thread(target=f, daemon=True).start()
+        threading.Thread(target=worker, daemon=True).start()
 
     app.run(
         host="0.0.0.0",
