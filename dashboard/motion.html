@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motion calibration</title>
+
+<style>
+body {
+  margin: 0;
+  padding: 12px;
+  background: #1b2e3b;
+  color: #e8eef2;
+  font: 15px/1.5 system-ui;
+}
+label {
+  display: inline-block;
+  margin: 6px;
+}
+input, select, button {
+  font: inherit;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #526875;
+  background: #244052;
+  color: white;
+}
+input[type=number] {
+  width: 85px;
+}
+button {
+  cursor: pointer;
+  margin: 5px;
+}
+button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+#stop {
+  background: #c93225;
+}
+pre {
+  white-space: pre-wrap;
+  background: #12202b;
+  padding: 10px;
+}
+small {
+  color: #b7cad5;
+}
+a {
+  color: #58d9c8;
+}
+</style>
+</head>
+
+<body>
+<h3>Калібрування руху</h3>
+
+<small>
+  Рівна вільна ділянка. IMU відкалібрований,
+  сонари увімкнені. Почни з 0,5 с.
+  Не перемикай вкладку під час заїзду.
+</small>
+
+<div>
+  <label>
+    Напрямок
+    <select id="direction">
+      <option value="forward">Вперед</option>
+      <option value="reverse">Назад</option>
+    </select>
+  </label>
+
+  <label>
+    Потужність %
+    <input id="power" type="number"
+           min="20" max="60" step="5" value="40">
+  </label>
+
+  <label>
+    Час, с
+    <input id="duration" type="number"
+           min="0.5" max="3" step="0.5" value="0.5">
+  </label>
+
+  <label>
+    Підлога
+    <input id="surface" value="tile">
+  </label>
+
+  <label>
+    Батарея / серія
+    <input id="battery"
+           placeholder="Наприклад: заряджена, серія A">
+  </label>
+</div>
+
+<button id="start">Почати заїзд</button>
+<button id="stop">STOP</button>
+
+<pre id="result">Очікування...</pre>
+
+<div>
+  <label>
+    Відстань, см
+    <input id="distance" type="number"
+           min="0.1" step="0.1">
+  </label>
+
+  <label>
+    Примітка
+    <input id="notes"
+           placeholder="Ковзання, зміщення тощо">
+  </label>
+</div>
+
+<button id="save">Зберегти вимірювання</button>
+<button id="discard">Відкинути / наступний</button>
+
+<a href="/api/motion/export" target="_blank">
+  Експорт JSON
+</a>
+
+<pre id="message"></pre>
+
+<small>
+  Швидкість тут — відстань до повної зупинки / час команди.
+  Модель діє лише для перевірених умов, потужності та тривалості.
+</small>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let run = null;
+let owned = null;
+let busy = false;
+let polling = false;
+
+async function post(url, data = {}) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || !result.ok) {
+    throw Error(result.msg || 'Запит відхилено');
+  }
+
+  return result;
+}
+
+function render() {
+  const active = run && run.state === 'running';
+
+  $('start').disabled = busy || !!(run && !run.saved);
+  $('save').disabled = busy || !run || active;
+  $('discard').disabled = busy || !run || active;
+
+  [
+    'direction',
+    'power',
+    'duration',
+    'surface',
+    'battery'
+  ].forEach(id => {
+    $(id).disabled = active || busy;
+  });
+
+  $('result').textContent = run
+    ? `Стан: ${run.state}
+Причина: ${run.reason || '-'}
+Напрямок: ${run.direction}
+Час команди: ${run.elapsed_s.toFixed(3)} с
+Зміна кута: ${run.yaw_delta_deg.toFixed(2)}°
+Максимальне відхилення: ${run.max_yaw_deg.toFixed(2)}°
+Команди L/R: ${JSON.stringify(run.applied)}
+Збережено: ${run.saved ? 'так' : 'ні'}`
+    : 'Готово до заїзду';
+}
+
+async function action(fn) {
+  busy = true;
+  render();
+
+  try {
+    await fn();
+  } catch (error) {
+    $('message').textContent = error.message;
+  } finally {
+    busy = false;
+    render();
+  }
+}
+
+$('start').onclick = () => action(async () => {
+  if (
+    parent !== window
+    && parent.location.hash !== '#tests'
+  ) {
+    throw Error('Відкрий Tests');
+  }
+
+  const result = await post('/api/motion/start', {
+    direction: $('direction').value,
+    power: +$('power').value / 100,
+    duration: +$('duration').value,
+    surface: $('surface').value,
+    battery: $('battery').value
+  });
+
+  run = result.run;
+  owned = run.id;
+  $('distance').value = '';
+  $('message').textContent = 'Заїзд розпочато';
+});
+
+async function stop() {
+  owned = null;
+  await post('/api/stop');
+  await poll();
+}
+
+$('stop').onclick = () => action(stop);
+
+$('save').onclick = () => action(async () => {
+  const result = await post('/api/motion/save', {
+    id: run.id,
+    distance_cm: +$('distance').value,
+    notes: $('notes').value
+  });
+
+  run = result.run;
+  const model = result.model;
+
+  const mean = model.mean_cm_s == null
+    ? '-'
+    : model.mean_cm_s.toFixed(2);
+
+  const std = model.std_cm_s == null
+    ? '-'
+    : model.std_cm_s.toFixed(2);
+
+  $('message').textContent =
+    `Збережено.
+Придатний для моделі: ${run.usable ? 'так' : 'ні'}.
+Повторів у цих умовах: ${model.count}.
+Середня швидкість: ${mean} см/с.
+Розкид: ${std} см/с.
+${model.ready
+  ? 'Є щонайменше 3 повтори.'
+  : 'Потрібні щонайменше 3 придатні повтори.'}`;
+});
+
+$('discard').onclick = () => action(async () => {
+  await post('/api/motion/discard');
+  run = null;
+  owned = null;
+});
+
+async function poll() {
+  if (polling) return;
+  polling = true;
+
+  try {
+    const response = await fetch(
+      '/api/motion/status',
+      {cache: 'no-store'}
+    );
+
+    if (!response.ok) {
+      throw Error('Немає зв’язку');
+    }
+
+    const result = await response.json();
+    run = result.run;
+
+    if (!run || run.state !== 'running') {
+      owned = null;
+    }
+
+    render();
+
+  } catch (error) {
+    $('message').textContent =
+      'Немає зв’язку із сервером';
+  } finally {
+    polling = false;
+  }
+}
+
+setInterval(async () => {
+  if (!owned) return;
+
+  if (
+    document.hidden
+    || (
+      parent !== window
+      && parent.location.hash !== '#tests'
+    )
+  ) {
+    stop().catch(() => {});
+    return;
+  }
+
+  try {
+    await post('/api/motion/heartbeat', {id: owned});
+  } catch (error) {
+    owned = null;
+  }
+}, 200);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && owned) {
+    stop().catch(() => {});
+  }
+});
+
+addEventListener('pagehide', () => {
+  if (owned) {
+    navigator.sendBeacon(
+      '/api/stop',
+      new Blob(['{}'], {
+        type: 'application/json'
+      })
+    );
+  }
+});
+
+setInterval(poll, 250);
+poll();
+</script>
+</body>
+</html>
