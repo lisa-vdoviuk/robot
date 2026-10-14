@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """
-Rescue Robot dashboard server.
-
 Run from the project root:
     python3 backend/server.py
 
 Open:
     https://<pi-ip>:8000
-
-Shared settings, certificates and model files live in the project root.
 """
 import array
 import atexit
@@ -18,9 +14,11 @@ import math
 import os
 import queue
 import re
+import signal
 import ssl
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -40,15 +38,16 @@ SONARS = [
     dict(echo=24, trigger=23),
     dict(echo=27, trigger=17),
 ]
-
-# Original S2 faces forward; original S1 faces backward.
 FRONT_SONAR, REAR_SONAR = 1, 0
 
 SPK = "plughw:CARD=MAX98357A,DEV=0"
 MIC = "auto"
 
 CLASSES = {0: "person", 16: "dog"}
-COLORS = {"person": (176, 198, 60), "dog": (36, 165, 245)}
+COLORS = {
+    "person": (176, 198, 60),
+    "dog": (36, 165, 245),
+}
 MODEL = "yolo11n"
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,6 +69,7 @@ DEFAULTS = dict(
 )
 
 CFG = dict(DEFAULTS)
+
 try:
     with open(CFG_FILE) as f:
         CFG.update({
@@ -105,7 +105,7 @@ frame = dict(jpg=None)
 out = dict(jpg=None)
 cond = threading.Condition()
 talk_q = queue.Queue(maxsize=60)
-control_lock = threading.Lock()
+control_lock = threading.RLock()
 
 imu = MPU6050(bus_number=1)
 
@@ -130,6 +130,8 @@ sonars = [
     for p in SONARS
 ]
 
+motor_updated = [0.0, 0.0]
+
 
 def drive(m, v):
     if m is None:
@@ -144,23 +146,25 @@ def drive(m, v):
     else:
         m.stop()
 
+    for index, motor in enumerate(motors):
+        if m is motor:
+            motor_updated[index] = time.monotonic()
+
 
 def sonar_ranges():
     return S["dist"][FRONT_SONAR], S["dist"][REAR_SONAR]
 
 
 def obstacle_blocks(l, r, front_cm, rear_cm, stop_cm, enabled):
-    """
-    Block the whole command if either wheel moves toward a near obstacle.
-
-    Pivot turns check both directions.
-    These two sensors do not measure side clearance.
-    """
     if not enabled:
         return []
 
     def near(d):
-        return d is not None and math.isfinite(d) and 0 <= d <= stop_cm
+        return (
+            d is not None
+            and math.isfinite(d)
+            and 0 <= d <= stop_cm
+        )
 
     blocked = []
 
@@ -173,66 +177,245 @@ def obstacle_blocks(l, r, front_cm, rear_cm, stop_cm, enabled):
     return blocked
 
 
-def control():
-    while True:
+# ---------- MINI MAP V0 ----------
+
+class MiniMap:
+    # Means from the six real trials at 40% motor power.
+    # Provisional extrapolation beyond the original 1-second trials.
+    SPEEDS = {
+        "forward": 21.1087887108,
+        "reverse": 22.0637781360,
+    }
+
+    def __init__(self):
+        self.origin = None
+        self.valid = False
+        self.reason = "Calibrate IMU, then Reset map"
+
+        self.x = 0.0
+        self.y = 0.0
+        self.heading = 0.0
+        self.distance = 0.0
+
+        self.points = []
+        self.previous_time = None
+        self.previous_mode = "stop"
+        self.previous_heading = 0.0
+        self.started = None
+
+    @staticmethod
+    def imu_ready(data):
+        yaw = data.get("yaw_deg")
+        return (
+            data.get("valid")
+            and data.get("yaw_valid")
+            and isinstance(yaw, (int, float))
+            and math.isfinite(yaw)
+            and data.get("calibration") != "running"
+        )
+
+    def invalidate(self, reason):
+        if self.valid:
+            self.valid = False
+            self.reason = reason + "; Reset map required"
+
+    def reset(self, data):
+        if not self.imu_ready(data):
+            raise ValueError("Fresh calibrated IMU angle required")
+
+        self.__init__()
+        self.origin = data["yaw_deg"]
+        self.valid = True
+        self.reason = "Recording approximate path at 40% power"
+        self.points = [[0.0, 0.0, "start"]]
+        self.started = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    @staticmethod
+    def mode(a, b):
+        if not all(math.isfinite(v) for v in (a, b)):
+            return "unsupported"
+
+        if max(abs(a), abs(b)) < 0.001:
+            return "stop"
+
+        # Pivot rotation: translation is assumed zero.
+        if a * b < 0 and abs(a + b) < 0.002:
+            return "pivot"
+
+        if abs(a - 0.4) < 0.002 and abs(b - 0.4) < 0.002:
+            return "forward"
+
+        if abs(a + 0.4) < 0.002 and abs(b + 0.4) < 0.002:
+            return "reverse"
+
+        return "unsupported"
+
+    def step(self, now, data, applied, testing, output_fresh):
+        if not self.valid:
+            return
+
+        if testing:
+            self.invalidate("Hardware test interrupted mapping")
+            return
+
+        if not self.imu_ready(data):
+            self.invalidate("IMU angle unavailable")
+            return
+
+        if not output_fresh:
+            self.invalidate("Motor control updates unavailable")
+            return
+
+        current = self.mode(*applied)
+
+        if current == "unsupported":
+            self.invalidate(
+                "Use separate arrows at 40%, motor trims 1.0"
+            )
+            return
+
+        heading = data["yaw_deg"] - self.origin
+
+        if self.previous_time is not None:
+            dt = now - self.previous_time
+
+            if not 0 < dt <= 0.25:
+                self.invalidate("Mapping sample gap")
+                return
+
+            # Integrate the command active over the preceding interval.
+            mode = self.previous_mode
+
+            if mode in self.SPEEDS:
+                if len(self.points) >= 12000:
+                    self.invalidate("Path limit reached; export JSON")
+                    return
+
+                distance = self.SPEEDS[mode] * dt
+                angle = math.radians(
+                    (self.previous_heading + heading) / 2
+                )
+                signed = (
+                    distance if mode == "forward" else -distance
+                )
+
+                self.x += signed * math.cos(angle)
+                self.y += signed * math.sin(angle)
+                self.distance += distance
+                self.points.append([self.x, self.y, mode])
+
+        self.heading = heading
+        self.previous_heading = heading
+        self.previous_time = now
+        self.previous_mode = current
+
+    def snapshot(self):
+        return dict(
+            schema=1,
+            valid=self.valid,
+            reason=self.reason,
+            started=self.started,
+            x_cm=self.x,
+            y_cm=self.y,
+            heading_deg=self.heading,
+            distance_cm=self.distance,
+            points=self.points,
+            speeds_cm_s=self.SPEEDS,
+            assumptions=(
+                "40% power, level tile floor; old 1 s trials "
+                "extrapolated. Relative gyro heading; pivot "
+                "translation assumed zero. No encoders, "
+                "slip/coasting correction or SLAM. Reverse is "
+                "less reliable. RAM only; export before restart."
+            ),
+        )
+
+
+minimap = MiniMap()
+map_stop = threading.Event()
+
+
+def map_loop():
+    while not map_stop.wait(0.02):
         with control_lock:
-            l, r = S["l"], S["r"]
+            now = time.monotonic()
 
-            if time.time() - S["t"] > CFG["watchdog"]:
-                l = r = 0
-
-            if imu.is_calibrating():
-                l = r = 0
-
-            if not S["testing"]:
-                m = CFG["max_speed"]
-                a, b = (r, l) if CFG["swap"] else (l, r)
-
-                a = max(
-                    -1.0,
-                    min(1.0, max(-m, min(m, a)) * CFG["trim_l"]),
+            try:
+                minimap.step(
+                    now,
+                    imu.snapshot(),
+                    S["applied_drive"],
+                    S["testing"],
+                    all(m is not None for m in motors)
+                    and all(
+                        0 <= now - t < 0.2
+                        for t in motor_updated
+                    ),
                 )
-                b = max(
-                    -1.0,
-                    min(1.0, max(-m, min(m, b)) * CFG["trim_r"]),
+            except Exception as error:
+                minimap.invalidate(
+                    "Map error: " + str(error)[:100]
                 )
 
-                front_cm, rear_cm = sonar_ranges()
 
-                S["blocked_by"] = obstacle_blocks(
-                    a,
-                    b,
-                    front_cm,
-                    rear_cm,
-                    CFG["stop_cm"],
-                    S["safety"],
-                )
-                S["blocked"] = bool(S["blocked_by"])
-
-                if S["blocked"]:
-                    a = b = 0.0
-
-                S["applied_drive"] = [a, b]
-
-                drive(motors[0], a)
-                drive(motors[1], b)
-
-        time.sleep(0.05)
+@app.get("/api/map/status")
+def api_map_status():
+    with control_lock:
+        return jsonify(minimap.snapshot())
 
 
-def sonar_loop():
-    hist = [[], []]
+@app.post("/api/map/reset")
+def api_map_reset():
+    with control_lock:
+        if (
+            S["testing"]
+            or S.get("motion_test_pending", 0)
+            or any(
+                abs(v) > 0.001
+                for v in S["applied_drive"]
+            )
+            or S["l"]
+            or S["r"]
+        ):
+            return jsonify(
+                ok=False,
+                msg="Stop the robot first",
+            ), 409
 
-    while True:
-        for i, sensor in enumerate(sonars):
-            if sensor is not None:
-                hist[i] = (hist[i] + [sensor.distance * 100])[-3:]
-                S["dist"][i] = round(
-                    sorted(hist[i])[len(hist[i]) // 2], 1
-                )
-                time.sleep(0.05)
+        if any(m is None for m in motors):
+            return jsonify(
+                ok=False,
+                msg="Both motors must be available",
+            ), 409
 
-        time.sleep(0.05)
+        try:
+            minimap.reset(imu.snapshot())
+        except ValueError as error:
+            return jsonify(
+                ok=False,
+                msg=str(error),
+            ), 409
+
+        return jsonify(ok=True, msg="Map origin reset")
+
+
+@app.get("/api/map/export")
+def api_map_export():
+    with control_lock:
+        payload = json.dumps(
+            minimap.snapshot(),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+
+    return Response(
+        payload,
+        mimetype="application/json",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="mini_map_v0.json"'
+        },
+    )
 
 
 # ---------- CAMERA / DETECTION ----------
@@ -268,11 +451,14 @@ def camera_loop():
 
         with cond:
             frame["jpg"] = buf.getvalue()
+
             if not S["detect"]:
                 out["jpg"] = frame["jpg"]
+
             cond.notify_all()
 
         n += 1
+
         if time.time() - t0 >= 2:
             S["fps"] = round(n / (time.time() - t0), 1)
             n, t0 = 0, time.time()
@@ -289,7 +475,11 @@ def load_model():
                 format="ncnn",
                 imgsz=320,
             )
-        return YOLO(os.path.join(HERE, ncnn), task="detect")
+
+        return YOLO(
+            os.path.join(HERE, ncnn),
+            task="detect",
+        )
 
     except Exception as e:
         print("NCNN unavailable, using PyTorch:", e)
@@ -324,6 +514,7 @@ def detect_loop():
             )
 
             t = time.time()
+
             res = model(
                 img,
                 classes=list(CLASSES),
@@ -361,6 +552,7 @@ def detect_loop():
                     col,
                     -1,
                 )
+
                 cv2.putText(
                     img,
                     txt,
@@ -388,8 +580,11 @@ def detect_loop():
                 cond.notify_all()
 
             n += 1
+
             if time.time() - t0 >= 2:
-                S["det_fps"] = round(n / (time.time() - t0), 1)
+                S["det_fps"] = round(
+                    n / (time.time() - t0), 1
+                )
                 n, t0 = 0, time.time()
 
         except Exception as e:
@@ -399,7 +594,7 @@ def detect_loop():
             print("Detection error:", e)
 
 
-# ---------- SYSTEM / AUDIO HELPERS ----------
+# ---------- SYSTEM / AUDIO ----------
 
 def sh(cmd):
     try:
@@ -421,7 +616,9 @@ def sysinfo():
             if ":" in line
         }
 
-    memory = round(100 * (1 - m["MemAvailable"] / m["MemTotal"]))
+    memory = round(
+        100 * (1 - m["MemAvailable"] / m["MemTotal"])
+    )
     cpu = round(os.getloadavg()[0] / os.cpu_count() * 100)
     return memory, cpu
 
@@ -466,6 +663,7 @@ def find_mic():
         (c for c in cards if "usb" in (c[1] + c[2]).lower()),
         cards[0],
     )
+
     return f"plughw:CARD={pick[1]},DEV={pick[3]}"
 
 
@@ -478,7 +676,8 @@ def record(sec):
             [],
             1,
             "",
-            "no microphone found (arecord -l is empty): plug in the USB mic",
+            "no microphone found (arecord -l is empty): "
+            "plug in the USB mic",
         )
 
     result = subprocess.run(
@@ -494,6 +693,7 @@ def record(sec):
         text=True,
         timeout=sec + 5,
     )
+
     return path, result
 
 
@@ -508,6 +708,7 @@ def levels(path):
         sum(x * x for x in samples) / max(len(samples), 1)
     )
     peak = max((abs(x) for x in samples), default=0)
+
     return db(rms), db(peak)
 
 
@@ -516,8 +717,8 @@ def levels(path):
 def t_sonar():
     d = sonar_ranges()
     ok = all(x is not None and 2 < x < 299 for x in d)
-
     msg = f"Front {d[0]} cm, rear {d[1]} cm"
+
     if not ok:
         msg += " (no echo: check Echo wire, divider, 5V)"
 
@@ -568,7 +769,10 @@ def t_echo():
     if result.returncode != 0:
         return False, "recording failed"
 
-    return play(path).returncode == 0, "recorded 3 s and played it back"
+    return (
+        play(path).returncode == 0,
+        "recorded 3 s and played it back",
+    )
 
 
 def t_motors():
@@ -596,10 +800,7 @@ TESTS = dict(
 )
 
 
-# ---------- AUDIO STREAM ----------
-
 def talk_worker():
-    """Play 16 kHz mono PCM in a dedicated worker."""
     player = None
 
     while True:
@@ -665,8 +866,7 @@ def video():
             if jpg:
                 yield (
                     b"--f\r\nContent-Type: image/jpeg\r\n\r\n"
-                    + jpg
-                    + b"\r\n"
+                    + jpg + b"\r\n"
                 )
 
     return Response(
@@ -713,12 +913,14 @@ def api_imu_calibrate():
         ok, msg = imu.start_calibration()
 
         if ok:
+            minimap.invalidate("IMU recalibrated")
             S.update(
                 l=0.0,
                 r=0.0,
                 t=0.0,
                 applied_drive=[0.0, 0.0],
             )
+
             for m in motors:
                 drive(m, 0)
 
@@ -727,7 +929,23 @@ def api_imu_calibrate():
 
 @app.post("/api/imu/zero")
 def api_imu_zero():
-    ok, msg = imu.zero_yaw()
+    with control_lock:
+        if (
+            S["testing"]
+            or any(S["applied_drive"])
+            or S["l"]
+            or S["r"]
+        ):
+            return jsonify(
+                ok=False,
+                msg="Stop the robot first",
+            ), 409
+
+        ok, msg = imu.zero_yaw()
+
+        if ok:
+            minimap.invalidate("IMU angle reset")
+
     return jsonify(ok=ok, msg=msg), (200 if ok else 409)
 
 
@@ -773,6 +991,7 @@ def api_talk_stop():
 @app.get("/api/status")
 def api_status():
     mem, cpu = sysinfo()
+
     temperature = (
         sh(["vcgencmd", "measure_temp"])
         .replace("temp=", "")
@@ -792,9 +1011,9 @@ def api_status():
         fps=S["fps"],
         cam=S["cam"],
         temp=temperature,
-        throttled=sh(["vcgencmd", "get_throttled"]).replace(
-            "throttled=", ""
-        ),
+        throttled=sh(
+            ["vcgencmd", "get_throttled"]
+        ).replace("throttled=", ""),
         cpu=cpu,
         mem=mem,
         drive=[S["l"], S["r"]],
@@ -828,7 +1047,9 @@ def api_test(name):
                 msg="Test or calibration already running",
             ), 409
 
+        minimap.invalidate("Hardware test started")
         S["testing"] = True
+
         for m in motors:
             drive(m, 0)
 
@@ -867,9 +1088,12 @@ def api_settings_set():
 # ---------- STARTUP / CLEANUP ----------
 
 def cleanup():
+    map_stop.set()
+
     for m in motors:
         if m:
             m.stop()
+
     imu.close()
 
 
@@ -887,6 +1111,7 @@ def https_context():
         if os.path.isfile(cert) and os.path.isfile(key):
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(cert, key)
+
             print(
                 f"HTTPS enabled; certificates: {directory}",
                 flush=True,
@@ -903,7 +1128,15 @@ def https_context():
     )
 
 
+# Connect the existing motion module directly.
+# It provides control(), sonar_loop() and /api/motion/* routes.
+from motion import install as install_motion
+install_motion(globals())
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
     tls = https_context()
     atexit.register(cleanup)
     imu.start()
@@ -914,6 +1147,7 @@ if __name__ == "__main__":
         camera_loop,
         detect_loop,
         talk_worker,
+        map_loop,
     ):
         threading.Thread(target=worker, daemon=True).start()
 

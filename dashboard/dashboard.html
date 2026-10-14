@@ -1,106 +1,65 @@
 <!doctype html>
-<html lang="en">
+<html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rescue Robot</title>
-
 <style>
 :root{
-  --bg:#12202b;
-  --panel:#1b2e3b;
-  --line:#2f4757;
-  --tx:#e8eef2;
-  --mut:#93a8b6;
-  --go:#3cc6b0;
-  --bad:#ff6b57;
-  --amb:#f5a524;
+  --bg:#12202b;--panel:#1b2e3b;--line:#2f4757;
+  --tx:#e8eef2;--mut:#93a8b6;--go:#3cc6b0;
+  --bad:#ff6b57;--amb:#f5a524;
 }
 *{box-sizing:border-box}
 body{
-  margin:0;
-  background:var(--bg);
-  color:var(--tx);
-  font:15px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif;
+  margin:0;background:var(--bg);color:var(--tx);
+  font:15px/1.45 system-ui,sans-serif;
 }
 header{
-  display:flex;
-  gap:20px;
-  align-items:center;
-  padding:0 16px;
-  border-bottom:1px solid var(--line);
+  display:flex;gap:20px;align-items:center;
+  padding:0 16px;border-bottom:1px solid var(--line);
 }
-h1{
-  font-size:17px;
-  margin:0 8px 0 0;
-  font-weight:700;
-  padding:12px 0;
-}
+h1{font-size:17px;margin:0 8px 0 0;padding:12px 0}
 nav a{
-  color:var(--mut);
-  text-decoration:none;
-  padding:14px 12px;
-  display:inline-block;
-  border-bottom:3px solid transparent;
+  color:var(--mut);text-decoration:none;padding:14px 12px;
+  display:inline-block;border-bottom:3px solid transparent;
 }
 nav a.on{color:var(--tx);border-color:var(--go)}
 #link{margin-left:auto;font-size:13px;color:var(--go)}
 #link.off{color:var(--bad)}
 .page{
-  display:none;
-  grid-template-columns:minmax(0,2fr) minmax(290px,1fr);
-  gap:12px;
-  padding:12px;
-  max-width:1280px;
-  margin:auto;
+  display:none;grid-template-columns:minmax(0,2fr) minmax(290px,1fr);
+  gap:12px;padding:12px;max-width:1280px;margin:auto;
 }
 .page.on{display:grid}
 @media(max-width:820px){
   .page.on{grid-template-columns:1fr}
+  header{gap:6px;flex-wrap:wrap}
 }
 section{
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:12px;
-  margin-bottom:12px;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:12px;margin-bottom:12px;
 }
 h2{font-size:14px;margin:0 0 8px;color:var(--mut);font-weight:600}
 .cam{
-  position:relative;
-  aspect-ratio:4/3;
-  background:#000;
-  border-radius:8px;
-  overflow:hidden;
+  position:relative;aspect-ratio:4/3;background:#000;
+  border-radius:8px;overflow:hidden;
 }
 .cam img{width:100%;height:100%;object-fit:contain;display:block}
 .hud{
-  position:absolute;
-  left:8px;
-  bottom:8px;
-  background:#000a;
-  border-radius:6px;
-  padding:3px 8px;
-  font-size:12px;
+  position:absolute;left:8px;bottom:8px;background:#000a;
+  border-radius:6px;padding:3px 8px;font-size:12px;
 }
 .ban{
-  position:absolute;
-  left:0;
-  right:0;
-  text-align:center;
-  padding:6px;
-  font-weight:700;
-  display:none;
-  color:#fff;
+  position:absolute;left:0;right:0;text-align:center;
+  padding:6px;font-weight:700;display:none;color:#fff;
 }
 #alert{top:0;background:var(--bad);font-size:18px}
 #warn{bottom:0;background:var(--amb);color:#201400}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .pad{
-  display:grid;
-  grid-template-columns:repeat(3,64px);
-  grid-template-rows:repeat(2,64px);
-  gap:6px;
+  display:grid;grid-template-columns:repeat(3,64px);
+  grid-template-rows:repeat(2,64px);gap:6px;
 }
 .pad button{font-size:24px}
 .pad .u{grid-column:2}
@@ -108,35 +67,23 @@ h2{font-size:14px;margin:0 0 8px;color:var(--mut);font-weight:600}
 .pad .d{grid-column:2;grid-row:2}
 .pad .r{grid-column:3;grid-row:2}
 button{
-  background:#244052;
-  color:var(--tx);
-  border:1px solid var(--line);
-  border-radius:10px;
-  padding:10px 12px;
-  font:inherit;
-  cursor:pointer;
-  touch-action:none;
-  user-select:none;
+  background:#244052;color:var(--tx);border:1px solid var(--line);
+  border-radius:10px;padding:10px 12px;font:inherit;
+  cursor:pointer;touch-action:none;user-select:none;
 }
 button:hover{border-color:var(--go)}
 button:focus-visible{outline:2px solid var(--go);outline-offset:2px}
 button.on,.pad button:active{background:var(--go);color:#06241e}
+button:disabled{opacity:.5;cursor:default}
 .stop{
-  background:var(--bad);
-  color:#fff;
-  border:0;
-  font-weight:700;
-  font-size:18px;
-  padding:14px 26px;
+  background:var(--bad);color:#fff;border:0;
+  font-weight:700;font-size:18px;padding:14px 26px;
 }
 #talk{padding:14px 20px;font-weight:700}
 #talk.on{background:var(--bad);color:#fff}
 .bar{
-  height:10px;
-  background:#0c1720;
-  border-radius:5px;
-  overflow:hidden;
-  margin:2px 0 8px;
+  height:10px;background:#0c1720;border-radius:5px;
+  overflow:hidden;margin:2px 0 8px;
 }
 .bar i{display:block;height:100%;background:var(--go);width:0}
 .bar i.near{background:var(--bad)}
@@ -144,12 +91,8 @@ button.on,.pad button:active{background:var(--go);color:#06241e}
 .kv b{text-align:right;font-variant-numeric:tabular-nums}
 .tests{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .log{
-  height:150px;
-  overflow:auto;
-  font:12px/1.5 ui-monospace,monospace;
-  background:#0c1720;
-  border-radius:8px;
-  padding:8px;
+  height:150px;overflow:auto;font:12px/1.5 ui-monospace,monospace;
+  background:#0c1720;border-radius:8px;padding:8px;
 }
 .log .ok{color:var(--go)}
 .log .bad{color:var(--bad)}
@@ -158,7 +101,6 @@ small{color:var(--mut)}
 label{display:block}
 </style>
 </head>
-
 <body>
 <header>
   <h1>Rescue Robot</h1>
@@ -186,19 +128,16 @@ label{display:block}
 
       <div class="row">
         <label style="flex:1;min-width:160px">
-          Speed <b data-f="spv">60</b>%
+          Speed <b data-f="spv">40</b>%
           <input class="speed" type="range"
-                 min="20" max="100" value="60" style="width:100%">
+                 min="20" max="100" value="40" style="width:100%">
         </label>
-
         <div>
           <button id="talk">Hold to talk (T)</button>
-          <div class="bar" title="Microphone level"
-               style="margin-top:6px">
+          <div class="bar" title="Microphone level" style="margin-top:6px">
             <i id="mic"></i>
           </div>
         </div>
-
         <button class="stop">STOP</button>
       </div>
 
@@ -214,6 +153,27 @@ label{display:block}
           Space stops. Hold T to speak through the robot.
         </small>
       </div>
+    </section>
+
+    <section>
+      <h2>Mini Map v0 — приблизний шлях</h2>
+      <canvas id="mapCanvas" width="640" height="380"
+              style="width:100%;display:block;background:#0c1720;border-radius:8px">
+      </canvas>
+      <div class="row">
+        <button id="mapReset">Reset map</button>
+        <a href="/api/map/export" style="color:var(--go)">Експорт JSON</a>
+        <span id="mapPose">Очікування даних…</span>
+      </div>
+      <p id="mapMessage">Calibrate gyro → Reset map → стрілки.</p>
+      <small>
+        40% потужності, trim L/R = 1.0.
+        Окремі стрілки: вперед, назад, поворот на місці.
+        Зелений — вперед, помаранчевий — назад.
+        Відстань приблизна; рух назад менш точний.
+        X — початковий напрямок вперед, Y — ліворуч.
+        Шлях зникає після перезапуску сервера.
+      </small>
     </section>
   </div>
 
@@ -238,15 +198,12 @@ label{display:block}
         <span>Motors L / R</span><b data-f="drv">0 / 0</b>
         <span>Voice</span><b data-f="voice">idle</b>
       </div>
-
       <div style="margin-top:10px">
         Передній сонар <span data-f="front_cm">-</span> cm
         <div class="bar"><i data-b="front"></i></div>
-
         Задній сонар <span data-f="rear_cm">-</span> cm
         <div class="bar"><i data-b="rear"></i></div>
       </div>
-
       <label>
         <input class="safety" type="checkbox" checked>
         Захист сонарів: стоп у бік перешкоди на відстані
@@ -274,12 +231,10 @@ label{display:block}
 
     <section>
       <h2>IMU calibration</h2>
-
       <div class="row">
         <button data-imu="calibrate">Calibrate gyro (6 s)</button>
         <button data-imu="zero">Zero angle</button>
       </div>
-
       <div class="kv">
         <span>Calibration</span><b data-f="imu_cal">needed</b>
         <span>Bias X / Y / Z (°/s)</span><b data-f="imu_bias">-</b>
@@ -288,7 +243,6 @@ label{display:block}
         <span>Samples / calibration temperature</span><b data-f="imu_cal_info">-</b>
         <span>Relative angle / elapsed time</span><b data-f="imu_yaw">-</b>
       </div>
-
       <small data-f="imu_cal_error"></small>
       <small style="display:block">
         Fix board flat, components up. Keep still for calibration.
@@ -311,7 +265,6 @@ label{display:block}
         <img id="vidB" alt="Live camera view">
       </div>
     </section>
-
     <section>
       <h2>Manual drive</h2>
       <div class="row" style="margin:0">
@@ -329,12 +282,10 @@ label{display:block}
   <div>
     <section>
       <h2>IMU calibration</h2>
-
       <div class="row">
         <button data-imu="calibrate">Calibrate gyro (6 s)</button>
         <button data-imu="zero">Zero angle</button>
       </div>
-
       <div class="kv">
         <span>Calibration</span><b data-f="imu_cal">needed</b>
         <span>Bias X / Y / Z (°/s)</span><b data-f="imu_bias">-</b>
@@ -343,13 +294,18 @@ label{display:block}
         <span>Samples / calibration temperature</span><b data-f="imu_cal_info">-</b>
         <span>Relative angle / elapsed time</span><b data-f="imu_yaw">-</b>
       </div>
-
       <small data-f="imu_cal_error"></small>
       <small style="display:block">
         Fix board flat, components up. Keep still for calibration.
         Relative Z rotation on a level floor; drifts over time.
         Recalibrate after server restart.
       </small>
+    </section>
+
+    <section>
+      <h2>Motion calibration</h2>
+      <iframe src="/motion" title="Motion calibration"
+              style="width:100%;height:760px;border:0"></iframe>
     </section>
 
     <section>
@@ -365,7 +321,6 @@ label{display:block}
       </div>
       <div class="log" id="tlog" style="margin-top:10px"></div>
     </section>
-
     <small>
       The sonar guard and the 0.4 s lost-connection stop
       run on the robot, independent of this page.
@@ -403,61 +358,41 @@ const log = (el, text, className) => {
 };
 
 /* Navigation */
-
 function nav() {
   const page = (location.hash || '#operate').slice(1);
-
-  $$('.page').forEach(x => {
-    x.classList.toggle('on', x.id === page);
-  });
-
-  $$('nav a').forEach(a => {
-    a.classList.toggle('on', a.dataset.p === page);
-  });
-
+  $$('.page').forEach(x => x.classList.toggle('on', x.id === page));
+  $$('nav a').forEach(a => a.classList.toggle('on', a.dataset.p === page));
   $('#vidA').src = page === 'operate' ? '/video' : '';
   $('#vidB').src = page === 'tests' ? '/video' : '';
 }
-
 addEventListener('hashchange', nav);
 nav();
 
 /* Driving */
-
 const keys = new Set();
 const map = {
-  ArrowUp: 'up',
-  w: 'up',
-  ArrowDown: 'down',
-  s: 'down',
-  ArrowLeft: 'left',
-  a: 'left',
-  ArrowRight: 'right',
-  d: 'right'
+  ArrowUp:'up', w:'up',
+  ArrowDown:'down', s:'down',
+  ArrowLeft:'left', a:'left',
+  ArrowRight:'right', d:'right'
 };
-
-let speed = .6;
+let speed = .4;
 let last = '0,0';
 
-const kk = e => map[
-  e.key.length > 1 ? e.key : e.key.toLowerCase()
-];
+const kk = e => map[e.key.length > 1 ? e.key : e.key.toLowerCase()];
 
 function vec() {
   const y = keys.has('up') - keys.has('down');
   const x = keys.has('right') - keys.has('left');
-  const l = y + x;
-  const r = y - x;
+  const l = y + x, r = y - x;
   const m = Math.max(1, Math.abs(l), Math.abs(r));
   return [l / m * speed, r / m * speed];
 }
-
 const mark = () => {
   $$('.pad button').forEach(b => {
     b.classList.toggle('on', keys.has(b.dataset.k));
   });
 };
-
 const halt = () => {
   keys.clear();
   mark();
@@ -470,12 +405,11 @@ addEventListener('keydown', e => {
     halt();
     return;
   }
-
   if (e.key.toLowerCase() === 't' && !e.repeat) {
     talk(true);
     return;
   }
-
+  if (e.target.matches('input, textarea, select') || e.target.isContentEditable) return;
   const k = kk(e);
   if (k) {
     e.preventDefault();
@@ -483,24 +417,26 @@ addEventListener('keydown', e => {
     mark();
   }
 });
-
 addEventListener('keyup', e => {
   if (e.key.toLowerCase() === 't') {
     talk(false);
     return;
   }
-
   const k = kk(e);
   if (k) {
     keys.delete(k);
     mark();
   }
 });
-
 addEventListener('blur', () => {
-  keys.clear();
-  mark();
+  halt();
   talk(false);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    halt();
+    talk(false);
+  }
 });
 
 $$('.pad button').forEach(b => {
@@ -508,7 +444,6 @@ $$('.pad button').forEach(b => {
     keys.add(b.dataset.k);
     mark();
   });
-
   ['pointerup', 'pointerleave', 'pointercancel'].forEach(event => {
     b.addEventListener(event, () => {
       keys.delete(b.dataset.k);
@@ -520,7 +455,6 @@ $$('.pad button').forEach(b => {
 setInterval(() => {
   const [l, r] = vec();
   const value = l + ',' + r;
-
   if (l || r || value !== last) {
     post('/api/drive', {l, r}).catch(() => {});
     last = value;
@@ -528,29 +462,19 @@ setInterval(() => {
 }, 100);
 
 $$('.stop').forEach(b => b.onclick = halt);
-
 $$('.speed').forEach(slider => {
   slider.oninput = e => {
     speed = e.target.value / 100;
     $$('.speed').forEach(x => x.value = e.target.value);
-    $$('[data-f=spv]').forEach(x => {
-      x.textContent = e.target.value;
-    });
+    $$('[data-f=spv]').forEach(x => x.textContent = e.target.value);
   };
 });
-
 $$('.safety').forEach(c => {
-  c.onchange = e => post('/api/safety', {
-    on: e.target.checked
-  });
+  c.onchange = e => post('/api/safety', {on:e.target.checked});
 });
+$('#det').onchange = e => post('/api/detect', {on:e.target.checked});
 
-$('#det').onchange = e => post('/api/detect', {
-  on: e.target.checked
-});
-
-/* Push-to-talk: 16 kHz mono PCM */
-
+/* Push-to-talk */
 let keep;
 let gain = 1;
 let ac;
@@ -558,7 +482,6 @@ let micOK = false;
 let talking = false;
 let chain = Promise.resolve();
 let pending = 0;
-
 let micInit = null;
 let talkRequested = false;
 let talkRequest = 0;
@@ -566,57 +489,39 @@ let talkSession = null;
 
 async function initMic() {
   if (micInit) return micInit;
-
   micInit = (async () => {
     let stream;
-
     try {
       if (micOK) {
         await ac.resume();
         return true;
       }
-
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+        audio:{echoCancellation:true, noiseSuppression:true}
       });
-
       ac = new AudioContext();
-
       const src = ac.createMediaStreamSource(stream);
       const processor = ac.createScriptProcessor(4096, 1, 1);
-
-      keep = {st: stream, src, p: processor};
+      keep = {st:stream, src, p:processor};
       processor.onaudioprocess = onAudio;
       src.connect(processor);
       processor.connect(ac.destination);
-
       micOK = true;
       log('#elog', 'Microphone ready (' + ac.state + ')', 'ok');
       return true;
-
     } catch (e) {
       if (stream) {
         stream.getTracks().forEach(t => t.stop());
       } else if (keep) {
         keep.st.getTracks().forEach(t => t.stop());
       }
-
       keep = null;
       micOK = false;
-
-      log(
-        '#elog',
-        'Microphone unavailable: ' + e.message +
-          (isSecureContext ? '' : ' (open the page over https://)'),
-        'bad'
-      );
+      log('#elog', 'Microphone unavailable: ' + e.message +
+          (isSecureContext ? '' : ' (open the page over https://)'), 'bad');
       return false;
     }
   })();
-
   try {
     return await micInit;
   } finally {
@@ -629,58 +534,38 @@ function queueTalk(body, session) {
   if (!stop) pending++;
 
   chain = chain
-    .catch(e => {
-      log('#elog', 'Talk queue recovered: ' + e.message, 'bad');
-    })
+    .catch(e => log('#elog', 'Talk queue recovered: ' + e.message, 'bad'))
     .then(async () => {
       try {
-        const r = await fetch(
-          stop ? '/api/talk/stop' : '/api/talk',
-          {
-            method: 'POST',
-            ...(stop ? {} : {body})
-          }
-        );
-
+        const r = await fetch(stop ? '/api/talk/stop' : '/api/talk', {
+          method:'POST',
+          ...(stop ? {} : {body})
+        });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         if (!stop) session.sent++;
-
       } catch (e) {
         if (!stop) session.fails++;
-
-        log(
-          '#elog',
-          'Talk ' + (stop ? 'stop' : 'chunk') +
-            ' failed: ' + e.message,
-          'bad'
-        );
-
+        log('#elog', 'Talk ' + (stop ? 'stop' : 'chunk') +
+            ' failed: ' + e.message, 'bad');
       } finally {
         if (!stop) {
           pending--;
         } else {
-          log(
-            '#elog',
-            'Talk: finished, ' + session.sent + ' chunks accepted' +
-              (session.fails ? ', ' + session.fails + ' failed' : '')
-          );
+          log('#elog', 'Talk: finished, ' + session.sent + ' chunks accepted' +
+              (session.fails ? ', ' + session.fails + ' failed' : ''));
         }
       }
     });
-
   return chain;
 }
 
 function onAudio(e) {
   const data = e.inputBuffer.getChannelData(0);
   let peak = 0;
-
   for (let i = 0; i < data.length; i++) {
     peak = Math.max(peak, Math.abs(data[i]));
   }
-
   $('#mic').style.width = Math.min(100, peak * 150) + '%';
-
   if (!talking || pending > 8) return;
 
   const ratio = ac.sampleRate / 16000;
@@ -691,89 +576,68 @@ function onAudio(e) {
     let sum = 0;
     const a = Math.floor(i * ratio);
     const b = Math.max(a + 1, Math.floor((i + 1) * ratio));
-
     for (let j = a; j < b; j++) sum += data[j];
-
-    output[i] = Math.max(
-      -1,
-      Math.min(1, sum / (b - a) * gain)
-    ) * 32767;
+    output[i] = Math.max(-1, Math.min(1, sum / (b - a) * gain)) * 32767;
   }
-
   queueTalk(output.buffer, talkSession);
 }
 
 async function talk(on) {
   if (on === talkRequested) return;
-
   talkRequested = on;
   const requestId = ++talkRequest;
 
   if (on) {
     const ready = await initMic();
-
     if (requestId !== talkRequest || !talkRequested) return;
-
     if (!ready) {
       talkRequested = false;
       return;
     }
-
-    talkSession = {sent: 0, fails: 0};
+    talkSession = {sent:0, fails:0};
     talking = true;
     log('#elog', 'Talk: transmitting');
-
   } else {
     const session = talkSession;
     talking = false;
     talkSession = null;
-
     if (session) {
       log('#elog', 'Talk: stopped; finishing queued audio');
       queueTalk(null, session);
     }
   }
-
   $('#talk').classList.toggle('on', talking);
 }
 
 const tb = $('#talk');
 tb.addEventListener('pointerdown', () => talk(true));
-
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(event => {
   tb.addEventListener(event, () => talk(false));
 });
 
 /* Module tests */
-
 $$('[data-t]').forEach(b => {
   b.onclick = async () => {
     log('#tlog', 'Test: ' + b.textContent + ' ...');
     b.disabled = true;
-
     try {
       const r = await post('/api/test/' + b.dataset.t);
       log('#tlog', r.msg, r.ok ? 'ok' : 'bad');
     } catch (e) {
       log('#tlog', 'no connection to the robot', 'bad');
     }
-
     b.disabled = false;
   };
 });
 
-/* IMU calibration */
-
+/* IMU */
 let imuBusy = false;
-
 $$('[data-imu]').forEach(b => {
   b.onclick = async () => {
     if (imuBusy) return;
-
     imuBusy = true;
     keys.clear();
     mark();
-
     try {
       const r = await post('/api/imu/' + b.dataset.imu);
       log('#elog', r.msg, r.ok ? 'ok' : 'bad');
@@ -790,87 +654,57 @@ $$('[data-imu]').forEach(b => {
 function renderCalibration(m) {
   m = m || {};
   const running = m.calibration === 'running';
-
   if (running) {
     keys.clear();
     mark();
   }
-
   const vector = v => Array.isArray(v)
-    ? v.map(x => Number(x).toFixed(4)).join(' / ')
-    : '-';
+    ? v.map(x => Number(x).toFixed(4)).join(' / ') : '-';
 
   const fields = {
-    imu_cal:
-      (m.calibration || 'unavailable') +
+    imu_cal:(m.calibration || 'unavailable') +
       (running ? ' ' + m.progress + '%' : ''),
-
-    imu_bias: vector(m.bias_dps),
-
-    imu_corrected: m.valid
-      ? vector(m.corrected_dps)
-      : '-',
-
-    imu_std: vector(m.gyro_std_dps),
-
-    imu_cal_info:
-      (m.sample_count || 0) + ' / ' +
-      (m.calibration_temp_c == null
-        ? '-'
-        : m.calibration_temp_c.toFixed(1) + ' °C'),
-
-    imu_yaw: m.valid && m.yaw_valid
-      ? m.yaw_deg.toFixed(2) + '° / ' + m.yaw_elapsed_s + ' s'
-      : '-',
-
-    imu_cal_error: m.calibration_error || ''
+    imu_bias:vector(m.bias_dps),
+    imu_corrected:m.valid ? vector(m.corrected_dps) : '-',
+    imu_std:vector(m.gyro_std_dps),
+    imu_cal_info:(m.sample_count || 0) + ' / ' +
+      (m.calibration_temp_c == null ? '-' : m.calibration_temp_c.toFixed(1) + ' °C'),
+    imu_yaw:m.valid && m.yaw_valid
+      ? m.yaw_deg.toFixed(2) + '° / ' + m.yaw_elapsed_s + ' s' : '-',
+    imu_cal_error:m.calibration_error || ''
   };
-
   for (const k in fields) {
-    $$('[data-f=' + k + ']').forEach(e => {
-      e.textContent = fields[k];
-    });
+    $$('[data-f=' + k + ']').forEach(e => e.textContent = fields[k]);
   }
-
   $$('[data-imu]').forEach(b => {
-    b.disabled =
-      imuBusy ||
-      running ||
-      !m.valid ||
+    b.disabled = imuBusy || running || !m.valid ||
       (b.dataset.imu === 'zero' && !m.bias_dps);
   });
 }
 
 function renderImu(m) {
   renderCalibration(m);
-
   m = m || {};
   const valid = !!m.valid;
-
   const vector = v => valid && Array.isArray(v)
-    ? v.map(x => Number(x).toFixed(3)).join(' / ')
-    : '-';
+    ? v.map(x => Number(x).toFixed(3)).join(' / ') : '-';
 
   const fields = {
-    imu_state: m.status || 'unavailable',
-    imu_address: m.address ? m.bus + ' / ' + m.address : '-',
-    imu_accel: vector(m.accel_g),
-    imu_gyro: vector(m.gyro_dps),
-    imu_norm: valid ? Number(m.accel_norm_g).toFixed(3) : '-',
-    imu_temp: valid ? Number(m.temp_c).toFixed(1) + ' °C' : '-',
-    imu_age: m.age_ms == null ? '-' : m.age_ms + ' ms',
-    imu_error: m.error || ''
+    imu_state:m.status || 'unavailable',
+    imu_address:m.address ? m.bus + ' / ' + m.address : '-',
+    imu_accel:vector(m.accel_g),
+    imu_gyro:vector(m.gyro_dps),
+    imu_norm:valid ? Number(m.accel_norm_g).toFixed(3) : '-',
+    imu_temp:valid ? Number(m.temp_c).toFixed(1) + ' °C' : '-',
+    imu_age:m.age_ms == null ? '-' : m.age_ms + ' ms',
+    imu_error:m.error || ''
   };
-
   for (const k in fields) {
-    $$('[data-f=' + k + ']').forEach(e => {
-      e.textContent = fields[k];
-    });
+    $$('[data-f=' + k + ']').forEach(e => e.textContent = fields[k]);
   }
 }
 
 /* Live status */
-
 let prevAlert = '';
 let prevBlocked = '';
 let prevErr = '';
@@ -878,57 +712,42 @@ let prevErr = '';
 async function poll() {
   try {
     const s = await (await fetch('/api/status')).json();
-
     renderImu(s.imu);
     $('#link').textContent = 'connected';
     $('#link').className = '';
 
     const fields = {
-      fps: s.cam ? s.fps : 'off',
-      det_fps: s.detect ? s.det_fps : '-',
-      infer_ms: s.detect ? s.infer_ms : '-',
-      det_state: s.det_state,
-      temp: s.temp ? s.temp + ' °C' : '-',
-      cpu: s.cpu + ' %',
-      mem: s.mem + ' %',
-      thr: s.throttled === '0x0' ? 'OK' : (s.throttled || '-'),
-      drv: s.testing
-        ? 'test running'
-        : s.applied_drive.map(v => v.toFixed(1)).join(' / '),
-      voice: s.talking ? 'transmitting' : 'idle',
-      front_cm: s.front_cm ?? '-',
-      rear_cm: s.rear_cm ?? '-',
-      sc: s.stop_cm
+      fps:s.cam ? s.fps : 'off',
+      det_fps:s.detect ? s.det_fps : '-',
+      infer_ms:s.detect ? s.infer_ms : '-',
+      det_state:s.det_state,
+      temp:s.temp ? s.temp + ' °C' : '-',
+      cpu:s.cpu + ' %',
+      mem:s.mem + ' %',
+      thr:s.throttled === '0x0' ? 'OK' : (s.throttled || '-'),
+      drv:s.testing ? 'test running' : s.applied_drive.map(v => v.toFixed(1)).join(' / '),
+      voice:s.talking ? 'transmitting' : 'idle',
+      front_cm:s.front_cm ?? '-',
+      rear_cm:s.rear_cm ?? '-',
+      sc:s.stop_cm
     };
-
     for (const k in fields) {
-      $$('[data-f=' + k + ']').forEach(e => {
-        e.textContent = fields[k];
-      });
+      $$('[data-f=' + k + ']').forEach(e => e.textContent = fields[k]);
     }
 
-    [
-      ['front', s.front_cm],
-      ['rear', s.rear_cm]
-    ].forEach(([side, distance]) => {
+    [['front', s.front_cm], ['rear', s.rear_cm]].forEach(([side, distance]) => {
       const bar = $('[data-b="' + side + '"]');
       bar.style.width = Math.min(distance || 0, 100) + '%';
-      bar.className =
-        distance != null && distance <= s.stop_cm ? 'near' : '';
+      bar.className = distance != null && distance <= s.stop_cm ? 'near' : '';
     });
 
     $('#warn').style.display = s.blocked ? 'block' : 'none';
-
-    const blockedKey = s.blocked
-      ? (s.blocked_by || []).join(',')
-      : '';
-
+    const blockedKey = s.blocked ? (s.blocked_by || []).join(',') : '';
     const blockedText = blockedKey === 'front'
       ? 'Перешкода спереду: рух у її бік заблоковано'
       : blockedKey === 'rear'
         ? 'Перешкода ззаду: рух у її бік заблоковано'
         : 'Перешкоди спереду та ззаду: рух заблоковано';
-
     $('#warn').textContent = blockedText;
 
     const alertText = s.alert.join(' + ');
@@ -936,139 +755,215 @@ async function poll() {
     $('#alert').textContent = alertText.toUpperCase() + ' DETECTED';
 
     if (alertText !== prevAlert) {
-      if (alertText) {
-        log('#elog', 'Detected: ' + alertText, 'warn');
-      }
+      if (alertText) log('#elog', 'Detected: ' + alertText, 'warn');
       prevAlert = alertText;
     }
-
     if (s.talk_err && s.talk_err !== prevErr) {
       log('#elog', 'Speaker error: ' + s.talk_err, 'bad');
       prevErr = s.talk_err;
     }
-
     if (blockedKey && blockedKey !== prevBlocked) {
       log('#elog', blockedText, 'warn');
     }
     prevBlocked = blockedKey;
-
     $('#det').checked = s.detect;
-
-    $$('.safety').forEach(c => {
-      c.checked = s.safety;
-    });
-
+    $$('.safety').forEach(c => c.checked = s.safety);
   } catch (e) {
     $('#link').textContent = 'no connection';
     $('#link').className = 'off';
     renderImu({
-      status: 'connection lost',
-      error: 'No current server data'
+      status:'connection lost',
+      error:'No current server data'
     });
   }
 }
-
 setInterval(poll, 500);
 poll();
 
 /* Settings */
-
 const SPEC = [
-  [
-    'stop_cm', 'Sonar stop distance (cm)', 5, 100, 1,
-    'At or below this distance: front blocks forward, rear blocks reverse. Pivot turns check both sensors.'
-  ],
-  [
-    'watchdog', 'Lost-connection stop (s)', 0.2, 2, 0.1,
-    'Motors stop if no command arrives for this long.'
-  ],
-  [
-    'max_speed', 'Maximum motor speed', 0.2, 1, 0.05,
-    'Caps the motor power for all driving.'
-  ],
-  [
-    'trim_l', 'Left motor trim', 0.5, 1.5, 0.01,
-    'Tune left and right trim until the robot drives straight.'
-  ],
-  [
-    'trim_r', 'Right motor trim', 0.5, 1.5, 0.01, ''
-  ],
-  [
-    'det_conf', 'Detection confidence', 0.1, 0.9, 0.05,
-    'Lower finds more people but gives more false alarms.'
-  ],
-  [
-    'confirm', 'Frames to confirm a detection', 1, 10, 1,
-    'Consecutive frames needed before an alert is raised.'
-  ],
-  [
-    'imgsz', 'Detector input size (px)', 160, 640, 32,
-    'Smaller is faster, larger sees small or distant objects better.'
-  ],
-  [
-    'talk_gain', 'Talk volume gain', 0.5, 4, 0.1,
-    'Amplifies your voice before it plays on the robot.'
-  ],
-  [
-    'swap', 'Swap left and right motors', null, null, null,
-    'Use if steering is mirrored.'
-  ],
-  [
-    'flip_camera', 'Rotate camera 180 degrees', null, null, null,
-    'Applies after restarting the server.'
-  ]
+  ['stop_cm','Sonar stop distance (cm)',5,100,1,
+   'Front blocks forward, rear blocks reverse. Pivot turns check both sensors.'],
+  ['watchdog','Lost-connection stop (s)',0.2,2,0.1,
+   'Motors stop if no command arrives for this long.'],
+  ['max_speed','Maximum motor speed',0.2,1,0.05,
+   'Caps the motor power for all driving.'],
+  ['trim_l','Left motor trim',0.5,1.5,0.01,
+   'Tune left and right trim until the robot drives straight.'],
+  ['trim_r','Right motor trim',0.5,1.5,0.01,''],
+  ['det_conf','Detection confidence',0.1,0.9,0.05,
+   'Lower finds more people but gives more false alarms.'],
+  ['confirm','Frames to confirm a detection',1,10,1,
+   'Consecutive frames needed before an alert is raised.'],
+  ['imgsz','Detector input size (px)',160,640,32,
+   'Smaller is faster, larger sees small or distant objects better.'],
+  ['talk_gain','Talk volume gain',0.5,4,0.1,
+   'Amplifies your voice before it plays on the robot.'],
+  ['swap','Swap left and right motors',null,null,null,
+   'Use if steering is mirrored.'],
+  ['flip_camera','Rotate camera 180 degrees',null,null,null,
+   'Applies after restarting the server.']
 ];
 
 async function loadSettings() {
-  const {cfg, defaults} = await (
-    await fetch('/api/settings')
-  ).json();
-
+  const {cfg, defaults} = await (await fetch('/api/settings')).json();
   gain = +cfg.talk_gain || 1;
   $('#sform').innerHTML = '';
 
   SPEC.forEach(([key, label, min, max, step, help]) => {
     const row = document.createElement('label');
     row.style.margin = '14px 0';
-
     row.innerHTML = min === null
       ? `<input type="checkbox" ${cfg[key] ? 'checked' : ''}>
          ${label}<br><small>${help}</small>`
       : `${label}: <b>${cfg[key]}</b>
          <small>(default ${defaults[key]})</small>
-         <input type="range"
-                min="${min}" max="${max}" step="${step}"
-                value="${cfg[key]}" style="width:100%">
+         <input type="range" min="${min}" max="${max}"
+                step="${step}" value="${cfg[key]}" style="width:100%">
          <small>${help}</small>`;
 
     const input = row.querySelector('input');
-
     input.oninput = () => {
-      if (min !== null) {
-        row.querySelector('b').textContent = input.value;
-      }
+      if (min !== null) row.querySelector('b').textContent = input.value;
     };
-
     input.onchange = async () => {
       const result = await post('/api/settings', {
-        [key]: min === null ? input.checked : +input.value
+        [key]:min === null ? input.checked : +input.value
       });
-
       gain = +result.cfg.talk_gain || 1;
-      $('#saved').textContent =
-        'Saved ' + new Date().toLocaleTimeString();
+      $('#saved').textContent = 'Saved ' + new Date().toLocaleTimeString();
     };
-
     $('#sform').append(row);
   });
 }
-
 $('#reset').onclick = async () => {
-  await post('/api/settings', {reset: true});
+  await post('/api/settings', {reset:true});
   loadSettings();
 };
-
 loadSettings();
+
+/* Mini Map: drawing never sends motor commands. */
+let mapPolling = false;
+
+function drawMap(m) {
+  const canvas = $('#mapCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height, pad = 38;
+  const pts = m.points.length ? m.points : [[0, 0, 'start']];
+  let xmin = -50, xmax = 50, ymin = -50, ymax = 50;
+
+  pts.forEach(p => {
+    xmin = Math.min(xmin, p[0]);
+    xmax = Math.max(xmax, p[0]);
+    ymin = Math.min(ymin, p[1]);
+    ymax = Math.max(ymax, p[1]);
+  });
+
+  const scale = Math.min(
+    (w - pad * 2) / (xmax - xmin),
+    (h - pad * 2) / (ymax - ymin)
+  );
+  const X = x => w / 2 + (x - (xmin + xmax) / 2) * scale;
+  const Y = y => h / 2 - (y - (ymin + ymax) / 2) * scale;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const grid = Math.pow(10, Math.floor(Math.log10(55 / scale)));
+  const step = grid * (grid * scale < 25 ? 5 : 1);
+  ctx.strokeStyle = '#213744';
+  ctx.lineWidth = 1;
+
+  for (let x = Math.ceil(xmin / step) * step; x <= xmax; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(X(x), pad);
+    ctx.lineTo(X(x), h - pad);
+    ctx.stroke();
+  }
+  for (let y = Math.ceil(ymin / step) * step; y <= ymax; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(pad, Y(y));
+    ctx.lineTo(w - pad, Y(y));
+    ctx.stroke();
+  }
+
+  ctx.lineWidth = 2.5;
+  for (let i = 1; i < pts.length; i++) {
+    ctx.strokeStyle = pts[i][2] === 'reverse' ? '#f5a524' : '#3cc6b0';
+    ctx.beginPath();
+    ctx.moveTo(X(pts[i-1][0]), Y(pts[i-1][1]));
+    ctx.lineTo(X(pts[i][0]), Y(pts[i][1]));
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#e8eef2';
+  ctx.font = '13px system-ui';
+  ctx.fillText('0', X(0) + 7, Y(0) - 7);
+  ctx.fillRect(X(0) - 3, Y(0) - 3, 6, 6);
+  ctx.fillText('Сітка: ' + step.toFixed(0) + ' см · X → · Y ↑', 12, h - 10);
+
+  ctx.save();
+  ctx.translate(X(m.x_cm), Y(m.y_cm));
+  ctx.rotate(-m.heading_deg * Math.PI / 180);
+  ctx.fillStyle = m.valid ? '#58c7ff' : '#ff6b57';
+  ctx.beginPath();
+  ctx.moveTo(13, 0);
+  ctx.lineTo(-9, -8);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-9, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  $('#mapPose').textContent =
+    `X ${m.x_cm.toFixed(1)} см · Y ${m.y_cm.toFixed(1)} см · ` +
+    `кут ${m.heading_deg.toFixed(1)}° · шлях ${m.distance_cm.toFixed(1)} см`;
+
+  $('#mapMessage').textContent = m.reason;
+  $('#mapMessage').style.color = m.valid ? 'var(--go)' : 'var(--amb)';
+}
+
+async function pollMap() {
+  if (mapPolling || document.hidden) return;
+  mapPolling = true;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+
+  try {
+    const response = await fetch('/api/map/status', {
+      cache:'no-store',
+      signal:controller.signal
+    });
+    if (!response.ok) throw Error('HTTP ' + response.status);
+    drawMap(await response.json());
+  } catch (error) {
+    $('#mapMessage').textContent =
+      'Немає свіжих даних мапи. Показано останній отриманий шлях.';
+    $('#mapMessage').style.color = 'var(--bad)';
+  } finally {
+    clearTimeout(timeout);
+    mapPolling = false;
+  }
+}
+
+$('#mapReset').onclick = async () => {
+  keys.clear();
+  mark();
+  $('#mapReset').disabled = true;
+  try {
+    await post('/api/stop');
+    const result = await post('/api/map/reset');
+    if (!result.ok) throw Error(result.msg);
+    await pollMap();
+  } catch (error) {
+    $('#mapMessage').textContent = error.message;
+  } finally {
+    $('#mapReset').disabled = false;
+  }
+};
+
+setInterval(pollMap, 200);
+pollMap();
 </script>
 </body>
 </html>

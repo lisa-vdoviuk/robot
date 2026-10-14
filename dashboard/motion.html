@@ -4,62 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Motion calibration</title>
-
 <style>
-body {
-  margin: 0;
-  padding: 12px;
-  background: #1b2e3b;
-  color: #e8eef2;
-  font: 15px/1.5 system-ui;
+body{
+  margin:0;padding:12px;background:#1b2e3b;
+  color:#e8eef2;font:15px/1.5 system-ui;
 }
-label {
-  display: inline-block;
-  margin: 6px;
+label{display:inline-block;margin:6px}
+input,select,button{
+  font:inherit;padding:8px;border-radius:6px;
+  border:1px solid #526875;background:#244052;color:white;
 }
-input, select, button {
-  font: inherit;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #526875;
-  background: #244052;
-  color: white;
-}
-input[type=number] {
-  width: 85px;
-}
-button {
-  cursor: pointer;
-  margin: 5px;
-}
-button:disabled {
-  opacity: .45;
-  cursor: default;
-}
-#stop {
-  background: #c93225;
-}
-pre {
-  white-space: pre-wrap;
-  background: #12202b;
-  padding: 10px;
-}
-small {
-  color: #b7cad5;
-}
-a {
-  color: #58d9c8;
-}
+input[type=number]{width:85px}
+button{cursor:pointer;margin:5px}
+button:disabled{opacity:.45;cursor:default}
+#stop{background:#c93225}
+pre{white-space:pre-wrap;background:#12202b;padding:10px}
+small{color:#b7cad5}
+a{color:#58d9c8}
 </style>
 </head>
-
 <body>
 <h3>Калібрування руху</h3>
-
 <small>
-  Рівна вільна ділянка. IMU відкалібрований,
-  сонари увімкнені. Почни з 0,5 с.
-  Не перемикай вкладку під час заїзду.
+  Рівна вільна ділянка. IMU відкалібрований, сонари увімкнені.
+  Почни з 0,5 с. Не перемикай вкладку під час заїзду.
 </small>
 
 <div>
@@ -70,57 +38,44 @@ a {
       <option value="reverse">Назад</option>
     </select>
   </label>
-
   <label>
     Потужність %
     <input id="power" type="number"
            min="20" max="60" step="5" value="40">
   </label>
-
   <label>
     Час, с
     <input id="duration" type="number"
            min="0.5" max="3" step="0.5" value="0.5">
   </label>
-
   <label>
     Підлога
     <input id="surface" value="tile">
   </label>
-
   <label>
     Батарея / серія
-    <input id="battery"
-           placeholder="Наприклад: заряджена, серія A">
+    <input id="battery" placeholder="Наприклад: заряджена, серія A">
   </label>
 </div>
 
 <button id="start">Почати заїзд</button>
 <button id="stop">STOP</button>
-
 <pre id="result">Очікування...</pre>
 
 <div>
   <label>
     Відстань, см
-    <input id="distance" type="number"
-           min="0.1" step="0.1">
+    <input id="distance" type="number" min="0.1" step="0.1">
   </label>
-
   <label>
     Примітка
-    <input id="notes"
-           placeholder="Ковзання, зміщення тощо">
+    <input id="notes" placeholder="Ковзання, зміщення тощо">
   </label>
 </div>
 
 <button id="save">Зберегти вимірювання</button>
 <button id="discard">Відкинути / наступний</button>
-
-<a href="/api/motion/export" target="_blank">
-  Експорт JSON
-</a>
-
+<a href="/api/motion/export" target="_blank">Експорт JSON</a>
 <pre id="message"></pre>
 
 <small>
@@ -130,7 +85,6 @@ a {
 
 <script>
 const $ = id => document.getElementById(id);
-
 let run = null;
 let owned = null;
 let busy = false;
@@ -138,34 +92,24 @@ let polling = false;
 
 async function post(url, data = {}) {
   const response = await fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(data)
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)
   });
-
   const result = await response.json();
-
   if (!response.ok || !result.ok) {
     throw Error(result.msg || 'Запит відхилено');
   }
-
   return result;
 }
 
 function render() {
   const active = run && run.state === 'running';
-
   $('start').disabled = busy || !!(run && !run.saved);
   $('save').disabled = busy || !run || active;
   $('discard').disabled = busy || !run || active;
 
-  [
-    'direction',
-    'power',
-    'duration',
-    'surface',
-    'battery'
-  ].forEach(id => {
+  ['direction','power','duration','surface','battery'].forEach(id => {
     $(id).disabled = active || busy;
   });
 
@@ -184,7 +128,6 @@ function render() {
 async function action(fn) {
   busy = true;
   render();
-
   try {
     await fn();
   } catch (error) {
@@ -196,19 +139,16 @@ async function action(fn) {
 }
 
 $('start').onclick = () => action(async () => {
-  if (
-    parent !== window
-    && parent.location.hash !== '#tests'
-  ) {
+  if (parent !== window && parent.location.hash !== '#tests') {
     throw Error('Відкрий Tests');
   }
 
   const result = await post('/api/motion/start', {
-    direction: $('direction').value,
-    power: +$('power').value / 100,
-    duration: +$('duration').value,
-    surface: $('surface').value,
-    battery: $('battery').value
+    direction:$('direction').value,
+    power:+$('power').value / 100,
+    duration:+$('duration').value,
+    surface:$('surface').value,
+    battery:$('battery').value
   });
 
   run = result.run;
@@ -227,24 +167,19 @@ $('stop').onclick = () => action(stop);
 
 $('save').onclick = () => action(async () => {
   const result = await post('/api/motion/save', {
-    id: run.id,
-    distance_cm: +$('distance').value,
-    notes: $('notes').value
+    id:run.id,
+    distance_cm:+$('distance').value,
+    notes:$('notes').value
   });
 
   run = result.run;
   const model = result.model;
-
   const mean = model.mean_cm_s == null
-    ? '-'
-    : model.mean_cm_s.toFixed(2);
-
+    ? '-' : model.mean_cm_s.toFixed(2);
   const std = model.std_cm_s == null
-    ? '-'
-    : model.std_cm_s.toFixed(2);
+    ? '-' : model.std_cm_s.toFixed(2);
 
-  $('message').textContent =
-    `Збережено.
+  $('message').textContent = `Збережено.
 Придатний для моделі: ${run.usable ? 'так' : 'ні'}.
 Повторів у цих умовах: ${model.count}.
 Середня швидкість: ${mean} см/с.
@@ -261,54 +196,59 @@ $('discard').onclick = () => action(async () => {
 });
 
 async function poll() {
-  if (polling) return;
+  if (polling || busy) return;
+
+  const ownerAtStart = owned;
   polling = true;
 
   try {
-    const response = await fetch(
-      '/api/motion/status',
-      {cache: 'no-store'}
-    );
-
-    if (!response.ok) {
-      throw Error('Немає зв’язку');
-    }
+    const response = await fetch('/api/motion/status', {
+      cache:'no-store'
+    });
+    if (!response.ok) throw Error('Немає зв’язку');
 
     const result = await response.json();
+
+    // Ignore responses started before a new local action/trial.
+    if (busy || owned !== ownerAtStart) return;
+
     run = result.run;
 
-    if (!run || run.state !== 'running') {
+    if (run && run.id === owned && run.state !== 'running') {
       owned = null;
     }
-
     render();
 
   } catch (error) {
-    $('message').textContent =
-      'Немає зв’язку із сервером';
+    $('message').textContent = 'Немає зв’язку із сервером';
   } finally {
     polling = false;
   }
 }
 
+let heartbeatPending = false;
+
 setInterval(async () => {
-  if (!owned) return;
+  if (!owned || heartbeatPending) return;
 
   if (
-    document.hidden
-    || (
-      parent !== window
-      && parent.location.hash !== '#tests'
-    )
+    document.hidden ||
+    (parent !== window && parent.location.hash !== '#tests')
   ) {
     stop().catch(() => {});
     return;
   }
 
+  const id = owned;
+  heartbeatPending = true;
+
   try {
-    await post('/api/motion/heartbeat', {id: owned});
+    await post('/api/motion/heartbeat', {id});
   } catch (error) {
-    owned = null;
+    // An old request must not clear a newer trial's ownership.
+    if (owned === id) owned = null;
+  } finally {
+    heartbeatPending = false;
   }
 }, 200);
 
@@ -322,9 +262,7 @@ addEventListener('pagehide', () => {
   if (owned) {
     navigator.sendBeacon(
       '/api/stop',
-      new Blob(['{}'], {
-        type: 'application/json'
-      })
+      new Blob(['{}'], {type:'application/json'})
     );
   }
 });
