@@ -92,10 +92,13 @@ class Recorder:
         self.lock = threading.RLock()
         self.run = None
         self.latest = None
+        self.export = dict(state="idle", id=None, done=0, total=0, error="")
+        self.export_path = None
+        self.export_signature = None
 
     def busy(self):
         with self.lock:
-            return self.run is not None
+            return self.run is not None or self.export["state"] == "building"
 
     def status(self):
         with self.lock:
@@ -110,6 +113,8 @@ class Recorder:
                 ),
                 dropped=r["dropped"] if r else 0,
                 latest=self.latest,
+                recordings=self.recordings(),
+                export=dict(self.export),
             )
 
     def start(self, data, metadata):
@@ -131,7 +136,7 @@ class Recorder:
             )
 
         with self.lock:
-            if self.run:
+            if self.run or self.export["state"] == "building":
                 raise ValueError(
                     "Recording/finalization already running"
                 )
@@ -199,6 +204,104 @@ class Recorder:
             thread.start()
 
             return identity
+
+    def recordings(self):
+        rows = []
+        for folder in sorted(self.root.iterdir()):
+            if not folder.is_dir() or folder.is_symlink() or folder.name.startswith('_'):
+                continue
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', folder.name):
+                continue
+            meta_path = folder / 'metadata.json'
+            if not meta_path.is_file():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding='utf-8'))
+                report_path = folder / 'report.json'
+                report = json.loads(report_path.read_text(encoding='utf-8')) if report_path.is_file() else None
+                warnings = report.get('warnings', []) if report else ['Report missing; possibly interrupted recording']
+                rows.append(dict(
+                    id=folder.name, scene=meta.get('scene', '?'),
+                    expected=meta.get('expected', '?'),
+                    seconds=report.get('interval_seconds') if report else None,
+                    predictions=report.get('successful_predictions') if report else None,
+                    person_frames=report.get('frames_with_person_prediction') if report else None,
+                    warnings=warnings,
+                    status='reported' if report else 'incomplete',
+                    report_mtime=report_path.stat().st_mtime_ns if report else None,
+                ))
+            except (OSError, ValueError, TypeError, AttributeError) as error:
+                rows.append(dict(id=folder.name, scene='?', expected='?', seconds=None,
+                                 predictions=None, person_frames=None, status='unreadable',
+                                 report_mtime=None, warnings=[str(error)]))
+        return rows
+
+    def export_all(self):
+        with self.lock:
+            if self.run:
+                raise ValueError('Finish the current recording first')
+            if self.export['state'] == 'building':
+                return dict(self.export)
+            rows = self.recordings()
+            if not rows:
+                raise ValueError('No saved recordings found')
+            signature = [(r['id'], r['report_mtime'], r['status']) for r in rows]
+            if (self.export['state'] == 'ready' and self.export_signature == signature
+                    and self.export_path and self.export_path.is_file()):
+                return dict(self.export)
+            identity = uuid.uuid4().hex
+            self.export = dict(state='building', id=identity, done=0, total=len(rows), error='')
+            self.export_signature = signature
+            threading.Thread(target=self._export_worker, args=(rows, identity), daemon=True).start()
+            return dict(self.export)
+
+    def _export_worker(self, rows, identity):
+        destination = self.root / '_exports'
+        temp = destination / (identity + '.tmp')
+        final = destination / (identity + '.zip')
+        try:
+            destination.mkdir(exist_ok=True)
+            entries = []
+            for row in rows:
+                folder = self.root / row['id']
+                if folder.is_symlink():
+                    raise ValueError('Recording folder changed during export')
+                files = []
+                for path in sorted(folder.rglob('*')):
+                    relative = path.relative_to(folder)
+                    if (path.is_symlink() or any(p.is_symlink() for p in path.parents if p != self.root)
+                            or not path.is_file() or path.name == 'bundle.zip'
+                            or path.suffix == '.tmp'):
+                        continue
+                    files.append((path, row['id'] + '/' + relative.as_posix()))
+                entries.append(files)
+            needed = sum(p.stat().st_size for files in entries for p, _ in files)
+            if shutil.disk_usage(destination).free < needed + 100*1024**2:
+                raise ValueError('Not enough free space for the combined ZIP')
+            manifest = dict(
+                schema=1, recording_count=len(rows), recordings=rows,
+                note='All stored recordings, including old pilots and incomplete records. '
+                     'Individual bundle.zip files omitted to avoid duplicate data. '
+                     'Original metadata is preserved; expected labels are not automatically corrected.'
+            )
+            with zipfile.ZipFile(temp, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as z:
+                z.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+                for index, files in enumerate(entries):
+                    for path, name in files:
+                        z.write(path, name)
+                    with self.lock:
+                        self.export['done'] = index + 1
+            os.replace(temp, final)
+            with self.lock:
+                self.export_path = final
+                self.export.update(state='ready', bytes=final.stat().st_size)
+        except Exception as error:
+            # Only our incomplete export file is removed; scene data is untouched.
+            if temp.exists():
+                temp.unlink()
+            with self.lock:
+                self.export.update(state='error', error=str(error))
+
 
     def stop(self, reason="operator STOP"):
         with self.lock:
@@ -1221,6 +1324,25 @@ def install(g):
         "pilot_file",
         download,
     )
+
+    def export_start():
+        try:
+            return jsonify(ok=True, export=recorder.export_all())
+        except (ValueError, OSError) as error:
+            return jsonify(ok=False, msg=str(error)), 409
+
+    def export_download(identity):
+        if not re.fullmatch(r'[a-f0-9]{32}', identity):
+            return jsonify(ok=False, msg='Unknown archive'), 404
+        path = recorder.root / '_exports' / (identity + '.zip')
+        if not path.is_file():
+            return jsonify(ok=False, msg='Archive not ready'), 404
+        return send_file(path, as_attachment=True,
+                         download_name='see_pilot_all_' + identity[:8] + '.zip')
+
+    app.add_url_rule('/api/pilot/export-all', 'pilot_export_all', export_start, methods=['POST'])
+    app.add_url_rule('/api/pilot/export-all/<identity>', 'pilot_export_download', export_download)
+
 
     def detection():
         if recorder.busy():
