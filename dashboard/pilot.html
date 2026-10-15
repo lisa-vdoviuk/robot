@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SEE pilot</title>
+
+<style>
+body{
+  margin:0;
+  padding:12px;
+  background:#1b2e3b;
+  color:#e8eef2;
+  font:14px/1.45 system-ui;
+}
+h2{margin:0 0 8px;font-size:17px}
+label{display:inline-block;margin:5px}
+input,select,button{
+  font:inherit;
+  padding:8px;
+  background:#244052;
+  color:white;
+  border:1px solid #526875;
+  border-radius:6px;
+}
+button{cursor:pointer;margin:5px}
+button:disabled{opacity:.5}
+#stop{background:#a33225}
+small{display:block;color:#aebfca}
+pre{
+  white-space:pre-wrap;
+  max-height:230px;
+  overflow:auto;
+  background:#12202b;
+  padding:10px;
+}
+a{color:#58d9c8;margin-right:16px}
+#baseline{overflow-wrap:anywhere}
+#message{color:#f5a524;min-height:20px}
+</style>
+</head>
+
+<body>
+<h2>SEE — запис пілоту</h2>
+
+<div id="baseline">YOLO завантажується…</div>
+
+<small>
+  Галочка Baseline YOLO на основному дашборді: лише ON/OFF.
+  Модель залишається в пам’яті.
+</small>
+
+<div>
+  <label>
+    Сцена
+    <input id="scene" value="P01" size="10" maxlength="40">
+  </label>
+
+  <label>
+    Секунди
+    <input id="seconds"
+           type="number"
+           min="5"
+           max="30"
+           value="15"
+           style="width:65px">
+  </label>
+
+  <label>
+    Очікується
+    <select id="expected">
+      <option value="visible_person">Людина видима</option>
+      <option value="no_visible_person">Без видимої людини</option>
+      <option value="mixed">Змінюється протягом запису</option>
+    </select>
+  </label>
+</div>
+
+<label style="display:block">
+  Опис умов
+  <input id="description"
+         style="width:100%;box-sizing:border-box"
+         placeholder="session01, room_A, 2 м, кімнатне світло, людина стоїть">
+</label>
+
+<button id="start">Записати сцену</button>
+<button id="stop">Завершити запис</button>
+
+<span id="state">Очікування сервера</span>
+
+<small>
+  Робот стоїть. Запис закінчиться автоматично,
+  навіть якщо браузер від’єднається.
+  Під час запису керування, Talk, тести й зміна налаштувань
+  заблоковані; STOP моторів доступний.
+</small>
+
+<div id="message"></div>
+<div id="links"></div>
+
+<pre id="report">Звіт з’явиться після завершення запису.</pre>
+
+<small>
+  Збереження: data/see_pilot/.
+  Raw AVI — без рамок, номінально 10 fps.
+  Реальні часові позначки й точні кадри детектора — в архіві.
+  Precision/Recall/AP без ручної розмітки не обчислюються.
+</small>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let pending = false;
+let polling = false;
+let current = null;
+
+async function post(url, body = {}) {
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+
+  const j = await r.json();
+
+  if (!r.ok || !j.ok) {
+    throw Error(j.msg || 'Запит відхилено');
+  }
+
+  return j;
+}
+
+function buttons() {
+  const busy = current && current.state !== 'idle';
+
+  $('start').disabled = pending || !current || busy;
+  $('stop').disabled = pending || !busy;
+
+  [
+    'scene',
+    'seconds',
+    'expected',
+    'description'
+  ].forEach(k => {
+    $(k).disabled = pending || busy;
+  });
+}
+
+async function act(fn) {
+  pending = true;
+  buttons();
+  $('message').textContent = '';
+
+  try {
+    await fn();
+  } catch (e) {
+    $('message').textContent = e.message;
+  } finally {
+    pending = false;
+    await poll();
+    buttons();
+  }
+}
+
+$('start').onclick = () => act(async () => {
+  const j = await post('/api/pilot/start', {
+    scene:$('scene').value,
+    seconds:Number($('seconds').value),
+    expected:$('expected').value,
+    description:$('description').value
+  });
+
+  $('message').textContent = 'Запис розпочато: ' + j.id;
+});
+
+$('stop').onclick = () => act(
+  () => post('/api/pilot/stop')
+);
+
+async function poll() {
+  if (polling) return;
+  polling = true;
+
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    2500
+  );
+
+  try {
+    const r = await fetch('/api/pilot/status', {
+      cache:'no-store',
+      signal:controller.signal
+    });
+
+    if (!r.ok) throw Error('HTTP ' + r.status);
+
+    const j = await r.json();
+    current = j.recorder;
+
+    $('baseline').textContent = j.baseline.ready
+      ? 'Baseline: ' + j.baseline.model +
+        ' · ' + j.baseline.format +
+        ' · imgsz 320 · ready'
+      : 'Baseline: ' + j.baseline.state +
+        ' ' + (j.baseline.error || '');
+
+    $('state').textContent =
+      current.state +
+      ' · ' + current.elapsed_s +
+      ' с · пропуски: ' + current.dropped;
+
+    if (current.latest) {
+      const last = current.latest;
+
+      $('report').textContent = JSON.stringify(
+        last.report || last,
+        null,
+        2
+      );
+
+      $('links').replaceChildren();
+
+      [
+        ['report.json', 'Report JSON'],
+        ['report.md', 'Report MD'],
+        ['raw.avi', 'Відео'],
+        ['bundle.zip', 'Усі матеріали ZIP']
+      ].forEach(([file, label]) => {
+        const a = document.createElement('a');
+        a.textContent = label;
+        a.href =
+          '/api/pilot/file/' +
+          encodeURIComponent(last.id) +
+          '/' + file;
+
+        $('links').append(a);
+      });
+    }
+
+  } catch (e) {
+    $('state').textContent =
+      'Немає зв’язку. Стан запису невідомий.';
+    current = null;
+
+  } finally {
+    clearTimeout(timer);
+    polling = false;
+    buttons();
+  }
+}
+
+setInterval(poll, 1000);
+poll();
+</script>
+</body>
+</html>

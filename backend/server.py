@@ -1133,6 +1133,9 @@ def https_context():
 from motion import install as install_motion
 install_motion(globals())
 
+from pilot import install as install_pilot
+install_pilot(globals())
+
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
