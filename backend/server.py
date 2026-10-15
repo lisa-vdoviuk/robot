@@ -1136,6 +1136,9 @@ install_motion(globals())
 from pilot import install as install_pilot
 install_pilot(globals())
 
+from hear import install as install_hear
+install_hear(globals())
+
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))

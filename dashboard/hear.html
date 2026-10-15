@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta
+  name="viewport"
+  content="width=device-width,initial-scale=1"
+>
+<title>HEAR microphone pilot</title>
+
+<style>
+body {
+  background: #12202b;
+  color: #e8eef2;
+  font: 16px/1.5 system-ui;
+  max-width: 950px;
+  margin: 24px auto;
+  padding: 16px;
+}
+
+section {
+  background: #1b2e3b;
+  padding: 18px;
+  border-radius: 12px;
+  margin: 16px 0;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+  padding: 9px;
+  margin: 5px 0;
+  box-sizing: border-box;
+}
+
+input,
+textarea {
+  width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: #69ddc7;
+}
+
+meter {
+  width: 100%;
+  height: 28px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td,
+th {
+  text-align: left;
+  border-bottom: 1px solid #405566;
+  padding: 8px;
+}
+
+#error {
+  color: #ff9988;
+  white-space: pre-wrap;
+}
+
+small {
+  color: #b6c8d4;
+}
+</style>
+</head>
+
+<body>
+<a href="/" target="_blank" rel="noopener">
+  Open robot controls in another tab
+</a>
+
+<h1>HEAR microphone pilot</h1>
+
+<p>
+  Records the Raspberry Pi microphone.
+  Browser microphone permission is not needed.
+</p>
+
+<section>
+  <label>
+    Scene ID
+    <input
+      id="scene"
+      value="H01_quiet_01"
+      maxlength="60"
+    >
+  </label>
+
+  <label>
+    Duration in seconds
+    <input
+      id="seconds"
+      type="number"
+      value="15"
+      min="5"
+      max="60"
+    >
+  </label>
+
+  <label>
+    Notes
+    <textarea
+      id="notes"
+      placeholder="Room, distance, gain, motor state,
+sound source, baseline YOLO on/off"
+    ></textarea>
+  </label>
+
+  <button id="start">Record</button>
+
+  <a href="/api/hear/download">
+    Download all completed and failed takes
+  </a>
+
+  <p id="status">Connecting…</p>
+  <div id="error"></div>
+
+  <meter
+    id="meter"
+    min="-90"
+    max="0"
+    value="-90"
+  ></meter>
+
+  <p id="level">
+    Levels appear during recording.
+  </p>
+
+  <small>
+    RMS and peak are digital dBFS, not sound pressure.
+    Recording ends automatically and survives a
+    browser disconnect. Robot driving still requires
+    its normal heartbeat.
+  </small>
+</section>
+
+<section>
+  <h2>Saved recordings</h2>
+
+  <p>
+    New recordings do not replace old ones.
+    Failed takes are retained for diagnosis.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Scene</th>
+        <th>Status</th>
+        <th>Seconds</th>
+        <th>RMS</th>
+        <th>Peak</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</section>
+
+<script>
+const el = id => document.getElementById(id);
+let submitting = false;
+
+el("start").onclick = async () => {
+  submitting = true;
+  el("start").disabled = true;
+  el("error").textContent = "";
+
+  try {
+    const response = await fetch(
+      "/api/hear/start",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          scene: el("scene").value,
+          seconds: Number(el("seconds").value),
+          notes: el("notes").value
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw Error(
+        result.error || "Start failed"
+      );
+    }
+  } catch (error) {
+    el("error").textContent = error.message;
+  } finally {
+    submitting = false;
+  }
+};
+
+async function poll() {
+  try {
+    const response = await fetch(
+      "/api/hear/status",
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw Error("Status unavailable");
+    }
+
+    const state = await response.json();
+
+    el("start").disabled =
+      state.active || submitting;
+
+    el("status").textContent = state.active
+      ? (
+          `Recording ${state.id} — ` +
+          `${state.elapsed_s} s`
+        )
+      : (
+          `Ready — ` +
+          `${state.recordings.length} saved takes`
+        );
+
+    if (state.error) {
+      el("error").textContent = state.error;
+    }
+
+    if (state.level) {
+      el("meter").value =
+        state.level.rms_dbfs;
+
+      el("level").textContent =
+        `RMS ${state.level.rms_dbfs} dBFS | ` +
+        `peak ${state.level.peak_dbfs} dBFS` +
+        (
+          state.active
+            ? ""
+            : " (last recorded block)"
+        );
+    }
+
+    el("rows").replaceChildren();
+
+    for (const recording of state.recordings) {
+      const row = document.createElement("tr");
+      const metrics = recording.metrics || {};
+
+      const values = [
+        recording.scene,
+        recording.status,
+        metrics.duration_s ?? "—",
+        metrics.rms_dbfs ?? "—",
+        metrics.peak_dbfs ?? "—"
+      ];
+
+      for (const value of values) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      }
+
+      el("rows").appendChild(row);
+    }
+  } catch (error) {
+    el("status").textContent =
+      "Connection unavailable; an active recording " +
+      "continues on the Pi.";
+  }
+
+  setTimeout(poll, 500);
+}
+
+poll();
+</script>
+</body>
+</html>
