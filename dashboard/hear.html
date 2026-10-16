@@ -10,7 +10,7 @@ table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1p
 #error{color:#ff9988;white-space:pre-wrap}small{color:#b6c8d4}
 </style>
 <a href="/" target="_blank" rel="noopener">Open robot controls in another tab</a>
-<h1>HEAR + WebRTC VAD</h1>
+<h1>HEAR + Silero VAD</h1>
 <p>Records the Raspberry Pi microphone. Browser microphone permission is not needed.</p>
 <section>
 <label>Scene ID<input id="scene" value="H01_quiet_01" maxlength="60"></label>
@@ -18,7 +18,7 @@ table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1p
 <label>Notes<textarea id="notes" placeholder="Room, distance, gain, motor state, sound source, baseline YOLO on/off"></textarea></label>
 <button id="start">Record</button> <a href="/api/hear/download">Download all completed and failed takes</a>
 <p id="status">Connecting...</p><div id="error"></div><h2 id="vad">VAD idle</h2><p id="playback"></p><p id="events"></p>
-<meter id="meter" min="-90" max="0" value="-90"></meter><p id="level">Levels and VAD run during recording. Mode 2; 30 ms frames; 90 ms confirmation; 300 ms release.</p>
+<meter id="meter" min="-90" max="0" value="-90"></meter><p id="level">Levels and VAD run during recording. Threshold 0.5; 32 ms frames; 96 ms confirmation; 320 ms release.</p>
 <small>RMS and peak are digital dBFS, not sound pressure. Recording ends automatically and survives a browser disconnect. Robot driving still requires its normal heartbeat.</small>
 </section>
 <section><h2>Saved recordings</h2><p>New recordings do not replace old ones. Failed takes are retained for diagnosis.</p>
@@ -39,6 +39,7 @@ async function poll(){
   const r=await fetch('/api/hear/status',{cache:'no-store'});if(!r.ok)throw Error('Status unavailable');const s=await r.json();
   el('start').disabled=s.active||submitting||!s.vad_available;
   el('vad').textContent=!s.vad_available?'VAD unavailable: '+s.vad_error:!s.active?'VAD idle — press Record':s.speech?'Speech detected':'No confirmed speech';
+  if(s.active && s.speech_score != null) el('vad').textContent += ' | score '+s.speech_score.toFixed(3);
   el('playback').textContent=s.active&&s.playback_possible?'Robot playback may be active — this is not evidence of an external person.':'';
   el('events').textContent='Completed events in current/last take: '+(s.events||[]).map(e=>e.start_s.toFixed(2)+'–'+e.end_s.toFixed(2)+' s'+(e.playback_possible?' (playback possible)':'')).join('; ');
   el('status').textContent=s.active?`Recording ${s.id} - ${s.elapsed_s} s`:`Ready - ${s.recordings.length} saved takes`;

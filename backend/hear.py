@@ -156,6 +156,7 @@ def install(g):
                         playback = playback_hint()
                         for prediction in detector.feed(raw, playback):
                             vad_log.write(json.dumps(prediction)+'\n')
+                            update(speech_score=prediction['speech_score'])
                         update(speech=detector.event is not None,
                                events=list(detector.events),playback_possible=playback)
                         row = dict(t_s=count/RATE, **levels(raw),
@@ -247,7 +248,7 @@ def install(g):
                 started_utc=datetime.now(timezone.utc).isoformat(),
                 measurement_note='Digital dBFS, not dB SPL. No software gain or denoising. Device DSP/AGC and ALSA resampling may still apply. Spectrum uses 4096-sample Hann windows, 50% overlap, DC removed per window; bands are unweighted. Near-full-scale samples indicate possible clipping, not proof of all analog clipping.')
             (folder/'metadata.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
-            update(active=True,id=rid,elapsed_s=0,level=None,error='',speech=False,events=[],playback_possible=False)
+            update(active=True,id=rid,elapsed_s=0,level=None,error='',speech=False,events=[],playback_possible=False,speech_score=None)
             threading.Thread(target=worker,args=(folder,meta),daemon=True).start()
             return jsonify(ok=True,id=rid)
         except Exception as exc:
