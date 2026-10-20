@@ -1084,6 +1084,7 @@ def install(g):
                 streak = streak + 1 if boxes else 0
 
                 state.update(
+                    see_result_at=item["stamp"],
                     det_state="baseline running",
                     infer_ms=round(wall_ms),
                     alert=(

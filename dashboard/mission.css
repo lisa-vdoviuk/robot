@@ -1,0 +1,103 @@
+:root {
+  color-scheme: dark;
+  --bg: #08090b;
+  --panel: #111418;
+  --line: #30363e;
+  --tx: #edf0f4;
+  --mut: #a4adb9;
+  --go: #75b7f0;
+  --bad: #ed665f;
+  --amb: #e6b45d;
+}
+
+body {
+  background: var(--bg);
+}
+
+header {
+  background: #0c0e11;
+  min-height: 60px;
+}
+
+h1 {
+  letter-spacing: .04em;
+  font-weight: 650;
+}
+
+section {
+  border-radius: 7px;
+  padding: 16px;
+}
+
+h2 {
+  color: #c4ccd6;
+  letter-spacing: .04em;
+}
+
+button {
+  background: #20252c;
+  border-radius: 5px;
+}
+
+button:hover {
+  background: #2a333e;
+}
+
+button.on,
+.pad button:active {
+  background: var(--go);
+  color: #08131e;
+}
+
+button.stop {
+  background: #b83832;
+  color: white;
+}
+
+input,
+select,
+textarea {
+  accent-color: var(--go);
+}
+
+.bar,
+.log {
+  background: #080b0f;
+}
+
+.mission {
+  border-top: 3px solid #5d728b;
+}
+
+.mission[data-signal="person"],
+.mission[data-signal="voice"],
+.mission[data-signal="both"] {
+  border-top-color: var(--amb);
+}
+
+#missionSignal {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#hearError {
+  color: var(--bad);
+  overflow-wrap: anywhere;
+}
+
+.mission .kv {
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .mission .kv {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .mission .kv b {
+    text-align: left;
+    margin-bottom: 8px;
+  }
+}

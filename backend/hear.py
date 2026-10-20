@@ -279,3 +279,7 @@ def install(g):
         except Exception:
             archive.close()
             raise
+
+    # Shared ownership: live monitoring and pilot recording cannot capture together.
+    from monitor import install as install_monitor
+    install_monitor(g, mic_lock, playback_hint)
