@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YOLO dataset recorder</title>
+<style>
+body{margin:0;padding:12px;background:#1b2e3b;color:#e8eef2;font:14px/1.45 system-ui}
+h2{margin:0 0 8px;font-size:17px}label{display:inline-block;margin:5px}
+input,select,button{font:inherit;padding:8px;background:#244052;color:white;border:1px solid #526875;border-radius:6px}
+button{cursor:pointer;margin:5px}button:disabled{opacity:.5}#stop{background:#a33225}#all{background:#186556}
+small{display:block;color:#aebfca}a{color:#58d9c8;margin-right:12px}
+#message{color:#f5a524;min-height:22px}.scroll{max-height:230px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px;text-align:left;border-bottom:1px solid #365061}
+pre{white-space:pre-wrap;max-height:220px;overflow:auto;background:#12202b;padding:10px}
+#baseline{overflow-wrap:anywhere}
+</style>
+<link rel="stylesheet" href="/mission.css">
+</head>
+<body>
+<h2>YOLO training data — scene recorder</h2>
+<p>Record raw camera scenes for later annotation. Baseline detections are not annotation labels. Keep the robot stationary.
+No train/test split is assigned automatically; keep entire sessions together when splitting.</p>
+<div>
+<label>Subject ID <input id="subject" value="S01" maxlength="80"></label>
+<label>Session / room ID <input id="session" value="roomA_session01" maxlength="80"></label>
+<label>Pose <select id="pose"><option>standing</option><option>sitting</option><option>crouching</option><option>lying</option><option>occluded</option><option>negative</option></select></label>
+<label>Lighting <select id="lighting"><option>normal</option><option>dim</option><option>backlit</option></select></label>
+<label>Distance (m) <input id="distance_m" type="number" min="0" max="20" step="0.1" value="1"></label>
+<label>Take <input id="take" type="number" min="1" max="100" value="1"></label>
+</div>
+<p>Use anonymous subject IDs. For scenes without a person choose negative and subject NONE.
+Changing tabs does not cancel a recording. Wait for finalization before downloading.</p>
+<div id="baseline">Connecting…</div>
+<div>
+<label>Scene <input id="scene" value="D01" size="10" maxlength="40"></label>
+<label>Seconds <input id="seconds" type="number" min="5" max="30" value="15" style="width:65px"></label>
+<label>Expected content <select id="expected">
+<option value="visible_person">Person visible</option>
+<option value="no_visible_person">No visible person</option>
+<option value="mixed">Changes during recording</option>
+</select></label>
+</div>
+<label style="display:block">Conditions / notes
+<input id="description" style="width:100%;box-sizing:border-box" placeholder="session04; take=1; room_A; usual light"></label>
+<button id="start">Record scene</button>
+<button id="stop">Finish recording</button>
+<span id="state"></span>
+<small>After completion, change the scene details and record again. Repeated names have unique folders. Previous recordings are retained.</small>
+<div id="message"></div>
+<p><b id="count">Saved recordings: —</b></p>
+<button id="all">Download all scenes as one ZIP</button>
+<span id="exportState"></span>
+<a id="download" hidden>Archive ready — download ZIP</a>
+<small>The requested ZIP contains YOLO dataset takes only. Interrupted takes are flagged. Originals remain on the Pi. Frames are unlabelled; predictions are not ground truth.</small>
+<div class="scroll"><table>
+<thead><tr><th>Scene / ID</th><th>Seconds</th><th>State</th><th>Files</th></tr></thead>
+<tbody id="history"></tbody>
+</table></div>
+<details><summary>View recording report</summary>
+<pre id="report">Click Report in the table.</pre></details>
+<script>
+const $=id=>document.getElementById(id);
+let current=null,pending=false,polling=false,autoDownload=null;
+async function post(url,body={}){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json();if(!r.ok||!j.ok)throw Error(j.msg||'Request rejected');return j;
+}
+function buttons(){
+  const recording=current&&current.state!=='idle';
+  const exporting=current&&current.export.state==='building';
+  $('start').disabled=pending||!current||recording||exporting;
+  $('stop').disabled=pending||!recording;
+  $('all').disabled=pending||!current||recording||exporting||!current.recordings.length;
+  ['scene','seconds','expected','description','subject','session','pose','lighting','distance_m','take'].forEach(k=>$(k).disabled=pending||recording||exporting);
+}
+$('pose').onchange=()=>{ $('expected').value=$('pose').value==='negative'?'no_visible_person':'visible_person'; };
+$('scene').addEventListener('input',()=>{
+  const name=$('scene').value.trim().toUpperCase();
+  if(/^N\d/.test(name))$('expected').value='no_visible_person';
+  else if(/^P06(?:$|[_-])/.test(name))$('expected').value='mixed';
+  else if(/^P\d/.test(name))$('expected').value='visible_person';
+});
+async function act(fn){
+  pending=true;buttons();$('message').textContent='';
+  try{await fn();}catch(e){$('message').textContent=e.message;}
+  finally{pending=false;await poll();buttons();}
+}
+$('start').onclick=()=>act(async()=>{
+  const result=await post('/api/pilot/start',{
+    purpose:'yolo_dataset',
+    dataset:Object.fromEntries(['subject','session','pose','lighting','distance_m','take'].map(k=>[k,$(k).value])),
+    scene:$('scene').value,seconds:Number($('seconds').value),
+    expected:$('expected').value,description:$('description').value
+  });
+  $('message').textContent='Recording started: '+result.id;
+});
+$('stop').onclick=()=>act(()=>post('/api/pilot/stop'));
+function downloadReady(ex){
+  const a=$('download');
+  a.href='/api/pilot/export-all/'+encodeURIComponent(ex.id);
+  a.hidden=false;
+  if(autoDownload===ex.id){autoDownload=null;a.click();}
+}
+$('all').onclick=()=>act(async()=>{
+  const result=await post('/api/pilot/export-all?purpose=yolo_dataset');
+  autoDownload=result.export.id;
+  $('download').hidden=true;
+  if(result.export.state==='ready')downloadReady(result.export);
+  else $('exportState').textContent='Preparing archive…';
+});
+function fileLink(row,file,label){
+  const a=document.createElement('a');a.textContent=label;
+  a.href='/api/pilot/file/'+encodeURIComponent(row.id)+'/'+file;return a;
+}
+async function showReport(row){
+  try{
+    const r=await fetch('/api/pilot/file/'+encodeURIComponent(row.id)+'/report.json');
+    if(!r.ok)throw Error('Report unavailable');
+    $('report').textContent=JSON.stringify(await r.json(),null,2);
+    document.querySelector('details').open=true;
+  }catch(e){$('message').textContent=e.message;}
+}
+function renderHistory(){
+  const rows=current.recordings;
+  const reported=rows.filter(r=>r.status==='reported').length;
+  $('count').textContent=`Recordings on Pi: ${rows.length}; with report: ${reported}`;
+  $('history').replaceChildren();
+  [...rows].reverse().forEach(row=>{
+    const tr=document.createElement('tr');
+    const name=document.createElement('td');name.textContent=row.scene;
+    const small=document.createElement('small');small.textContent=row.id;name.append(small);
+    const duration=document.createElement('td');duration.textContent=row.seconds==null?'—':row.seconds.toFixed(1);
+    const state=document.createElement('td');
+    state.textContent=row.id===current.id?current.state:
+      row.status!=='reported'?'Incomplete / inspect':row.warnings.length?'Review warnings':'Saved';
+    state.title=row.warnings.join('; ');
+    const files=document.createElement('td');
+    if(row.status==='reported'){
+      const b=document.createElement('button');b.textContent='Report';b.onclick=()=>showReport(row);
+      files.append(b,fileLink(row,'bundle.zip','ZIP'),fileLink(row,'raw.avi','Video'));
+    }
+    tr.append(name,duration,state,files);$('history').append(tr);
+  });
+}
+async function poll(){
+  if(polling)return;polling=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);
+  try{
+    const r=await fetch('/api/pilot/status',{cache:'no-store',signal:controller.signal});
+    if(!r.ok)throw Error('HTTP '+r.status);
+    const j=await r.json();current=j.recorder;
+    current.recordings=current.recordings.filter(r=>r.purpose==='yolo_dataset');
+    if(!current.recordings||!current.export)throw Error('Update backend/pilot.py and restart the server');
+    $('baseline').textContent=j.baseline.ready
+      ?'Baseline: '+j.baseline.model+' · '+j.baseline.format+' · ready'
+      :'Baseline: '+j.baseline.state+' '+(j.baseline.error||'');
+    $('state').textContent=current.state+' · '+current.elapsed_s+' s';
+    renderHistory();
+    const ex=current.export;
+    $('exportState').textContent=ex.state==='building'?`Archiving: ${ex.done}/${ex.total}`:
+      ex.state==='ready'?`ZIP ready: ${ex.total} recordings`:
+      ex.state==='error'?'Error: '+ex.error:'';
+    if(ex.state==='ready' && ex.purpose==='yolo_dataset')downloadReady(ex);
+    else $('download').hidden=true;
+  }catch(e){current=null;$('state').textContent='No current data: '+e.message;}
+  finally{clearTimeout(timer);polling=false;buttons();}
+}
+setInterval(poll,1500);poll();
+</script>
+</body></html>

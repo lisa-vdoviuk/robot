@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SEE pilot — усі записи</title>
+<title>SEE pilot — all recordings</title>
 <style>
 body{margin:0;padding:12px;background:#1b2e3b;color:#e8eef2;font:14px/1.45 system-ui}
 h2{margin:0 0 8px;font-size:17px}label{display:inline-block;margin:5px}
@@ -15,43 +15,44 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px;text-
 pre{white-space:pre-wrap;max-height:220px;overflow:auto;background:#12202b;padding:10px}
 #baseline{overflow-wrap:anywhere}
 </style>
+<link rel="stylesheet" href="/mission.css">
 </head>
 <body>
-<h2>SEE — послідовний запис сцен</h2>
-<div id="baseline">Підключення…</div>
+<h2>SEE — sequential scene recording</h2>
+<div id="baseline">Connecting…</div>
 <div>
-<label>Сцена <input id="scene" value="P01" size="10" maxlength="40"></label>
-<label>Секунди <input id="seconds" type="number" min="5" max="30" value="15" style="width:65px"></label>
-<label>Очікується <select id="expected">
-<option value="visible_person">Людина видима</option>
-<option value="no_visible_person">Без видимої людини</option>
-<option value="mixed">Змінюється протягом запису</option>
+<label>Scene <input id="scene" value="P01" size="10" maxlength="40"></label>
+<label>Seconds <input id="seconds" type="number" min="5" max="30" value="15" style="width:65px"></label>
+<label>Expected content <select id="expected">
+<option value="visible_person">Person visible</option>
+<option value="no_visible_person">No visible person</option>
+<option value="mixed">Changes during recording</option>
 </select></label>
 </div>
-<label style="display:block">Опис умов
+<label style="display:block">Conditions / notes
 <input id="description" style="width:100%;box-sizing:border-box" placeholder="session04; take=1; room_A; usual light"></label>
-<button id="start">Записати сцену</button>
-<button id="stop">Завершити запис</button>
+<button id="start">Record scene</button>
+<button id="stop">Finish recording</button>
 <span id="state"></span>
-<small>Після завершення зміни назву/опис і записуй наступну сцену. Повторні назви дозволені: кожен запис має власну папку. Старі записи не видаляються.</small>
+<small>After completion, change the scene details and record again. Repeated names have unique folders. Previous recordings are retained.</small>
 <div id="message"></div>
-<p><b id="count">Збережені записи: —</b></p>
-<button id="all">Завантажити всі сцени одним ZIP</button>
+<p><b id="count">Saved recordings: —</b></p>
+<button id="all">Download all scenes as one ZIP</button>
 <span id="exportState"></span>
-<a id="download" hidden>Архів готовий — завантажити ZIP</a>
-<small>Загальний ZIP містить усі записи в data/see_pilot/, включно з попередніми пробами. Перервані записи позначені окремо. Оригінали залишаються на Pi.</small>
+<a id="download" hidden>Archive ready — download ZIP</a>
+<small>The ZIP contains recordings from data/see_pilot/, including earlier pilot takes. Interrupted recordings are flagged. Originals remain on the Pi.</small>
 <div class="scroll"><table>
-<thead><tr><th>Сцена / ID</th><th>Секунди</th><th>Стан</th><th>Файли</th></tr></thead>
+<thead><tr><th>Scene / ID</th><th>Seconds</th><th>State</th><th>Files</th></tr></thead>
 <tbody id="history"></tbody>
 </table></div>
-<details><summary>Переглянути звіт вибраного запису</summary>
-<pre id="report">Натисни «Звіт» у таблиці.</pre></details>
+<details><summary>View recording report</summary>
+<pre id="report">Click Report in the table.</pre></details>
 <script>
 const $=id=>document.getElementById(id);
 let current=null,pending=false,polling=false,autoDownload=null;
 async function post(url,body={}){
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const j=await r.json();if(!r.ok||!j.ok)throw Error(j.msg||'Запит відхилено');return j;
+  const j=await r.json();if(!r.ok||!j.ok)throw Error(j.msg||'Request rejected');return j;
 }
 function buttons(){
   const recording=current&&current.state!=='idle';
@@ -77,7 +78,7 @@ $('start').onclick=()=>act(async()=>{
     scene:$('scene').value,seconds:Number($('seconds').value),
     expected:$('expected').value,description:$('description').value
   });
-  $('message').textContent='Запис розпочато: '+result.id;
+  $('message').textContent='Recording started: '+result.id;
 });
 $('stop').onclick=()=>act(()=>post('/api/pilot/stop'));
 function downloadReady(ex){
@@ -91,7 +92,7 @@ $('all').onclick=()=>act(async()=>{
   autoDownload=result.export.id;
   $('download').hidden=true;
   if(result.export.state==='ready')downloadReady(result.export);
-  else $('exportState').textContent='Готуємо загальний ZIP…';
+  else $('exportState').textContent='Preparing archive…';
 });
 function fileLink(row,file,label){
   const a=document.createElement('a');a.textContent=label;
@@ -100,7 +101,7 @@ function fileLink(row,file,label){
 async function showReport(row){
   try{
     const r=await fetch('/api/pilot/file/'+encodeURIComponent(row.id)+'/report.json');
-    if(!r.ok)throw Error('Звіт недоступний');
+    if(!r.ok)throw Error('Report unavailable');
     $('report').textContent=JSON.stringify(await r.json(),null,2);
     document.querySelector('details').open=true;
   }catch(e){$('message').textContent=e.message;}
@@ -108,7 +109,7 @@ async function showReport(row){
 function renderHistory(){
   const rows=current.recordings;
   const reported=rows.filter(r=>r.status==='reported').length;
-  $('count').textContent=`Записів на Pi: ${rows.length}; зі звітом: ${reported}`;
+  $('count').textContent=`Recordings on Pi: ${rows.length}; with report: ${reported}`;
   $('history').replaceChildren();
   [...rows].reverse().forEach(row=>{
     const tr=document.createElement('tr');
@@ -117,12 +118,12 @@ function renderHistory(){
     const duration=document.createElement('td');duration.textContent=row.seconds==null?'—':row.seconds.toFixed(1);
     const state=document.createElement('td');
     state.textContent=row.id===current.id?current.state:
-      row.status!=='reported'?'Неповний / перевірити':row.warnings.length?'Є зауваження':'Збережено';
+      row.status!=='reported'?'Incomplete / inspect':row.warnings.length?'Review warnings':'Saved';
     state.title=row.warnings.join('; ');
     const files=document.createElement('td');
     if(row.status==='reported'){
-      const b=document.createElement('button');b.textContent='Звіт';b.onclick=()=>showReport(row);
-      files.append(b,fileLink(row,'bundle.zip','ZIP'),fileLink(row,'raw.avi','Відео'));
+      const b=document.createElement('button');b.textContent='Report';b.onclick=()=>showReport(row);
+      files.append(b,fileLink(row,'bundle.zip','ZIP'),fileLink(row,'raw.avi','Video'));
     }
     tr.append(name,duration,state,files);$('history').append(tr);
   });
@@ -134,19 +135,19 @@ async function poll(){
     const r=await fetch('/api/pilot/status',{cache:'no-store',signal:controller.signal});
     if(!r.ok)throw Error('HTTP '+r.status);
     const j=await r.json();current=j.recorder;
-    if(!current.recordings||!current.export)throw Error('Онови backend/pilot.py і перезапусти сервер');
+    if(!current.recordings||!current.export)throw Error('Update backend/pilot.py and restart the server');
     $('baseline').textContent=j.baseline.ready
       ?'Baseline: '+j.baseline.model+' · '+j.baseline.format+' · ready'
       :'Baseline: '+j.baseline.state+' '+(j.baseline.error||'');
-    $('state').textContent=current.state+' · '+current.elapsed_s+' с';
+    $('state').textContent=current.state+' · '+current.elapsed_s+' s';
     renderHistory();
     const ex=current.export;
-    $('exportState').textContent=ex.state==='building'?`Архівуємо: ${ex.done}/${ex.total}`:
-      ex.state==='ready'?`ZIP готовий: ${ex.total} записів`:
-      ex.state==='error'?'Помилка: '+ex.error:'';
-    if(ex.state==='ready')downloadReady(ex);
+    $('exportState').textContent=ex.state==='building'?`Archiving: ${ex.done}/${ex.total}`:
+      ex.state==='ready'?`ZIP ready: ${ex.total} recordings`:
+      ex.state==='error'?'Error: '+ex.error:'';
+    if(ex.state==='ready' && !ex.purpose)downloadReady(ex);
     else $('download').hidden=true;
-  }catch(e){current=null;$('state').textContent='Немає актуальних даних: '+e.message;}
+  }catch(e){current=null;$('state').textContent='No current data: '+e.message;}
   finally{clearTimeout(timer);polling=false;buttons();}
 }
 setInterval(poll,1500);poll();

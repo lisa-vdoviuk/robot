@@ -95,6 +95,7 @@ class Recorder:
         self.export = dict(state="idle", id=None, done=0, total=0, error="")
         self.export_path = None
         self.export_signature = None
+        self.export_purpose = None
 
     def busy(self):
         with self.lock:
@@ -125,6 +126,29 @@ class Recorder:
                 "Scene: use 1–40 letters, digits, _ or -"
             )
 
+        purpose = data.get("purpose", "pilot")
+        if purpose not in ("pilot", "yolo_dataset"):
+            raise ValueError("Unknown recording purpose")
+        dataset = None
+        if purpose == "yolo_dataset":
+            dataset = data.get("dataset")
+            if not isinstance(dataset, dict):
+                raise ValueError("Dataset metadata is required")
+            for key in ("subject", "session", "pose", "lighting", "distance_m", "take"):
+                value = str(dataset.get(key, "")).strip()
+                if not value or len(value) > 80:
+                    raise ValueError("Required dataset field: " + key)
+            if dataset["pose"] not in ("standing", "sitting", "crouching", "lying", "occluded", "negative"):
+                raise ValueError("Unknown pose")
+            if dataset["lighting"] not in ("normal", "dim", "backlit"):
+                raise ValueError("Unknown lighting")
+            distance = float(dataset["distance_m"])
+            take = int(dataset["take"])
+            if not math.isfinite(distance) or not 0 <= distance <= 20 or not 1 <= take <= 100:
+                raise ValueError("Invalid distance or take")
+            dataset = {key: str(dataset[key]).strip() for key in
+                       ("subject", "session", "pose", "lighting", "distance_m", "take")}
+            dataset.update(split="unassigned", annotation_status="unlabelled")
         seconds = float(data.get("seconds", 15))
 
         if not math.isfinite(seconds) or not 5 <= seconds <= 30:
@@ -154,7 +178,8 @@ class Recorder:
             metadata.update(
                 id=identity,
                 scene=scene,
-                purpose="pilot",
+                purpose=purpose,
+                dataset=dataset,
                 requested_seconds=seconds,
                 started_utc=time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ",
@@ -222,6 +247,7 @@ class Recorder:
                 warnings = report.get('warnings', []) if report else ['Report missing; possibly interrupted recording']
                 rows.append(dict(
                     id=folder.name, scene=meta.get('scene', '?'),
+                    purpose=meta.get('purpose', 'pilot'), dataset=meta.get('dataset'),
                     expected=meta.get('expected', '?'),
                     seconds=report.get('interval_seconds') if report else None,
                     predictions=report.get('successful_predictions') if report else None,
@@ -236,13 +262,17 @@ class Recorder:
                                  report_mtime=None, warnings=[str(error)]))
         return rows
 
-    def export_all(self):
+    def export_all(self, purpose=None):
         with self.lock:
             if self.run:
                 raise ValueError('Finish the current recording first')
             if self.export['state'] == 'building':
+                if purpose != self.export_purpose:
+                    raise ValueError('Another archive is building; wait for completion')
                 return dict(self.export)
             rows = self.recordings()
+            if purpose:
+                rows = [r for r in rows if r.get("purpose") == purpose]
             if not rows:
                 raise ValueError('No saved recordings found')
             signature = [(r['id'], r['report_mtime'], r['status']) for r in rows]
@@ -250,8 +280,9 @@ class Recorder:
                     and self.export_path and self.export_path.is_file()):
                 return dict(self.export)
             identity = uuid.uuid4().hex
-            self.export = dict(state='building', id=identity, done=0, total=len(rows), error='')
+            self.export = dict(state='building', id=identity, done=0, total=len(rows), error='', purpose=purpose)
             self.export_signature = signature
+            self.export_purpose = purpose
             threading.Thread(target=self._export_worker, args=(rows, identity), daemon=True).start()
             return dict(self.export)
 
@@ -280,7 +311,8 @@ class Recorder:
                 raise ValueError('Not enough free space for the combined ZIP')
             manifest = dict(
                 schema=1, recording_count=len(rows), recordings=rows,
-                note='All stored recordings, including old pilots and incomplete records. '
+                purpose=self.export_purpose,
+                note='Selected stored recordings; interrupted records are included and flagged. '
                      'Individual bundle.zip files omitted to avoid duplicate data. '
                      'Original metadata is preserved; expected labels are not automatically corrected.'
             )
@@ -636,7 +668,7 @@ class Recorder:
                 "Video sampling below 8 fps"
             )
 
-        if not good:
+        if not good and r["meta"].get("baseline_enabled", True):
             warnings.append(
                 "No successful baseline predictions"
             )
@@ -677,7 +709,8 @@ class Recorder:
         return dict(
             id=r["id"],
             scene=r["meta"]["scene"],
-            purpose="pilot",
+            purpose=r["meta"].get("purpose", "pilot"),
+            dataset=r["meta"].get("dataset"),
             expected=r["meta"]["expected"],
             description=r["meta"]["description"],
             stop_reason=r["reason"],
@@ -757,6 +790,9 @@ def install(g):
     state["detect"] = True
     state["det_state"] = "loading baseline..."
     g["frame"].update(seq=0, stamp=0)
+
+    app.add_url_rule("/dataset", "dataset_page",
+                     lambda: send_file(root / "dashboard" / "dataset.html"))
 
     def model_info():
         with info_lock:
@@ -1254,7 +1290,7 @@ def install(g):
                     id=identity,
                 )
 
-            except (ValueError, OSError) as error:
+            except (ValueError, TypeError, OSError) as error:
                 return jsonify(
                     ok=False,
                     msg=str(error),
@@ -1328,8 +1364,9 @@ def install(g):
 
     def export_start():
         try:
-            return jsonify(ok=True, export=recorder.export_all())
-        except (ValueError, OSError) as error:
+            return jsonify(ok=True, export=recorder.export_all(
+                "yolo_dataset" if request.args.get("purpose") == "yolo_dataset" else None))
+        except (ValueError, TypeError, OSError) as error:
             return jsonify(ok=False, msg=str(error)), 409
 
     def export_download(identity):

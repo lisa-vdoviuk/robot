@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -108,19 +108,21 @@ label{display:block}
   <nav>
     <a href="#operate" data-p="operate">Operate</a>
     <a href="#tests" data-p="tests">Tests</a>
+    <a href="#dataset" data-p="dataset">YOLO Dataset</a>
     <a href="#settings" data-p="settings">Settings</a>
   <a href="/hear" target="_blank" rel="noopener">HEAR pilot</a>
 </nav>
   <span id="link">connected</span>
 </header>
 
+<div class="page" id="dataset"><section style="grid-column:1/-1"><iframe data-src="/dataset" title="YOLO dataset recorder" style="width:100%;height:1050px;border:0"></iframe></section></div>
 <div class="page" id="operate">
   <div>
     <section>
       <div class="cam">
         <img id="vidA" alt="Live camera view">
         <div id="alert" class="ban"></div>
-        <div id="warn" class="ban">Рух заблоковано сонаром</div>
+        <div id="warn" class="ban">Motion blocked by sonar</div>
         <div class="hud">
           cam <b data-f="fps">-</b> fps |
           detector <b data-f="det_fps">-</b> fps,
@@ -158,27 +160,27 @@ label{display:block}
     </section>
 
     <section>
-      <iframe src="/pilot" title="SEE pilot recorder" style="width:100%;height:670px;border:0"></iframe>
+      <iframe data-src="/pilot" title="SEE pilot recorder" style="width:100%;height:670px;border:0"></iframe>
     </section>
 
     <section>
-      <h2>Mini Map v0 — приблизний шлях</h2>
+      <h2>Mini Map v0 — estimated path</h2>
       <canvas id="mapCanvas" width="640" height="380"
               style="width:100%;display:block;background:#0c1720;border-radius:8px">
       </canvas>
       <div class="row">
         <button id="mapReset">Reset map</button>
-        <a href="/api/map/export" style="color:var(--go)">Експорт JSON</a>
-        <span id="mapPose">Очікування даних…</span>
+        <a href="/api/map/export" style="color:var(--go)">Export JSON</a>
+        <span id="mapPose">Waiting for data…</span>
       </div>
-      <p id="mapMessage">Calibrate gyro → Reset map → стрілки.</p>
+      <p id="mapMessage">Calibrate gyro → Reset map → arrow keys.</p>
       <small>
-        40% потужності, trim L/R = 1.0.
-        Окремі стрілки: вперед, назад, поворот на місці.
-        Зелений — вперед, помаранчевий — назад.
-        Відстань приблизна; рух назад менш точний.
-        X — початковий напрямок вперед, Y — ліворуч.
-        Шлях зникає після перезапуску сервера.
+        40% power, trim L/R = 1.0.
+        Individual arrow keys: forward, reverse, turn in place.
+        Green: forward; orange: reverse.
+        Distance is approximate; reverse motion is less accurate.
+        X: initial forward direction; Y: left.
+        The path resets when the server restarts.
       </small>
     </section>
   </div>
@@ -205,14 +207,14 @@ label{display:block}
         <span>Voice</span><b data-f="voice">idle</b>
       </div>
       <div style="margin-top:10px">
-        Передній сонар <span data-f="front_cm">-</span> cm
+        Front sonar <span data-f="front_cm">-</span> cm
         <div class="bar"><i data-b="front"></i></div>
-        Задній сонар <span data-f="rear_cm">-</span> cm
+        Rear sonar <span data-f="rear_cm">-</span> cm
         <div class="bar"><i data-b="rear"></i></div>
       </div>
       <label>
         <input class="safety" type="checkbox" checked>
-        Захист сонарів: стоп у бік перешкоди на відстані
+        Sonar protection: block movement towards obstacles within
         ≤ <span data-f="sc">20</span> cm
       </label>
     </section>
@@ -310,7 +312,7 @@ label{display:block}
 
     <section>
       <h2>Motion calibration</h2>
-      <iframe src="/motion" title="Motion calibration"
+      <iframe data-src="/motion" title="Motion calibration"
               style="width:100%;height:760px;border:0"></iframe>
     </section>
 
@@ -346,11 +348,13 @@ label{display:block}
   </section>
 </div>
 
+<script src="/talk.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 
 const post = (u, b) => fetch(u, {
+  signal:AbortSignal.timeout(2500),
   method: 'POST',
   headers: {'Content-Type': 'application/json'},
   body: JSON.stringify(b || {})
@@ -361,15 +365,25 @@ const log = (el, text, className) => {
   e.className = className || '';
   e.textContent = new Date().toLocaleTimeString() + '  ' + text;
   $(el).prepend(e);
+  while ($(el).children.length > 100) $(el).lastChild.remove();
 };
 
 /* Navigation */
 function nav() {
   const page = (location.hash || '#operate').slice(1);
+  if (document.hidden) { ['vidA','vidB'].forEach(id=>$('#'+id).removeAttribute('src')); return; }
   $$('.page').forEach(x => x.classList.toggle('on', x.id === page));
   $$('nav a').forEach(a => a.classList.toggle('on', a.dataset.p === page));
-  $('#vidA').src = page === 'operate' ? '/video' : '';
-  $('#vidB').src = page === 'tests' ? '/video' : '';
+  for (const [id, active] of [['vidA', page === 'operate'], ['vidB', page === 'tests']]) {
+    const img = $('#'+id);
+    if (active) { if (!img.getAttribute('src')) img.src='/video'; }
+    else img.removeAttribute('src');
+  }
+  $$('iframe[data-src]').forEach(f => {
+    const active=f.closest('.page').id===page;
+    if(active && !f.getAttribute('src')) f.src=f.dataset.src;
+    if(!active) f.removeAttribute('src');
+  });
 }
 addEventListener('hashchange', nav);
 nav();
@@ -402,10 +416,11 @@ const mark = () => {
 const halt = () => {
   keys.clear();
   mark();
-  post('/api/stop');
+  post('/api/stop').catch(() => {});
 };
 
 addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea, select') || e.target.isContentEditable) return;
   if (e.code === 'Space') {
     e.preventDefault();
     halt();
@@ -434,11 +449,19 @@ addEventListener('keyup', e => {
     mark();
   }
 });
+addEventListener('hashchange', () => {halt();talk(false);});
+for (const id of ['vidA','vidB']) {
+  $('#'+id).addEventListener('error', () => {
+    $('#'+id).removeAttribute('src');
+    setTimeout(nav, 3000);
+  });
+}
 addEventListener('blur', () => {
   halt();
   talk(false);
 });
 document.addEventListener('visibilitychange', () => {
+  nav();
   if (document.hidden) {
     halt();
     talk(false);
@@ -458,11 +481,15 @@ $$('.pad button').forEach(b => {
   });
 });
 
+let drivePending = false;
 setInterval(() => {
+  if (drivePending) return;
   const [l, r] = vec();
   const value = l + ',' + r;
   if (l || r || value !== last) {
-    post('/api/drive', {l, r}).catch(() => {});
+    drivePending=true;
+    post('/api/drive', {l, r}).catch(() => {keys.clear();mark();})
+      .finally(() => {drivePending=false;});
     last = value;
   }
 }, 100);
@@ -483,147 +510,6 @@ $('#det').onchange = async e => {
   if (!r.ok) log('#elog', r.msg, 'bad');
   poll();
 };
-
-/* Push-to-talk */
-let keep;
-let gain = 1;
-let ac;
-let micOK = false;
-let talking = false;
-let chain = Promise.resolve();
-let pending = 0;
-let micInit = null;
-let talkRequested = false;
-let talkRequest = 0;
-let talkSession = null;
-
-async function initMic() {
-  if (micInit) return micInit;
-  micInit = (async () => {
-    let stream;
-    try {
-      if (micOK) {
-        await ac.resume();
-        return true;
-      }
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true, noiseSuppression:true}
-      });
-      ac = new AudioContext();
-      const src = ac.createMediaStreamSource(stream);
-      const processor = ac.createScriptProcessor(4096, 1, 1);
-      keep = {st:stream, src, p:processor};
-      processor.onaudioprocess = onAudio;
-      src.connect(processor);
-      processor.connect(ac.destination);
-      micOK = true;
-      log('#elog', 'Microphone ready (' + ac.state + ')', 'ok');
-      return true;
-    } catch (e) {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      } else if (keep) {
-        keep.st.getTracks().forEach(t => t.stop());
-      }
-      keep = null;
-      micOK = false;
-      log('#elog', 'Microphone unavailable: ' + e.message +
-          (isSecureContext ? '' : ' (open the page over https://)'), 'bad');
-      return false;
-    }
-  })();
-  try {
-    return await micInit;
-  } finally {
-    micInit = null;
-  }
-}
-
-function queueTalk(body, session) {
-  const stop = body === null;
-  if (!stop) pending++;
-
-  chain = chain
-    .catch(e => log('#elog', 'Talk queue recovered: ' + e.message, 'bad'))
-    .then(async () => {
-      try {
-        const r = await fetch(stop ? '/api/talk/stop' : '/api/talk', {
-          method:'POST',
-          ...(stop ? {} : {body})
-        });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        if (!stop) session.sent++;
-      } catch (e) {
-        if (!stop) session.fails++;
-        log('#elog', 'Talk ' + (stop ? 'stop' : 'chunk') +
-            ' failed: ' + e.message, 'bad');
-      } finally {
-        if (!stop) {
-          pending--;
-        } else {
-          log('#elog', 'Talk: finished, ' + session.sent + ' chunks accepted' +
-              (session.fails ? ', ' + session.fails + ' failed' : ''));
-        }
-      }
-    });
-  return chain;
-}
-
-function onAudio(e) {
-  const data = e.inputBuffer.getChannelData(0);
-  let peak = 0;
-  for (let i = 0; i < data.length; i++) {
-    peak = Math.max(peak, Math.abs(data[i]));
-  }
-  $('#mic').style.width = Math.min(100, peak * 150) + '%';
-  if (!talking || pending > 8) return;
-
-  const ratio = ac.sampleRate / 16000;
-  const count = Math.floor(data.length / ratio);
-  const output = new Int16Array(count);
-
-  for (let i = 0; i < count; i++) {
-    let sum = 0;
-    const a = Math.floor(i * ratio);
-    const b = Math.max(a + 1, Math.floor((i + 1) * ratio));
-    for (let j = a; j < b; j++) sum += data[j];
-    output[i] = Math.max(-1, Math.min(1, sum / (b - a) * gain)) * 32767;
-  }
-  queueTalk(output.buffer, talkSession);
-}
-
-async function talk(on) {
-  if (on === talkRequested) return;
-  talkRequested = on;
-  const requestId = ++talkRequest;
-
-  if (on) {
-    const ready = await initMic();
-    if (requestId !== talkRequest || !talkRequested) return;
-    if (!ready) {
-      talkRequested = false;
-      return;
-    }
-    talkSession = {sent:0, fails:0};
-    talking = true;
-    log('#elog', 'Talk: transmitting');
-  } else {
-    const session = talkSession;
-    talking = false;
-    talkSession = null;
-    if (session) {
-      log('#elog', 'Talk: stopped; finishing queued audio');
-      queueTalk(null, session);
-    }
-  }
-  $('#talk').classList.toggle('on', talking);
-}
-
-const tb = $('#talk');
-tb.addEventListener('pointerdown', () => talk(true));
-['pointerup', 'pointerleave', 'pointercancel'].forEach(event => {
-  tb.addEventListener(event, () => talk(false));
-});
 
 /* Module tests */
 $$('[data-t]').forEach(b => {
@@ -719,9 +605,14 @@ let prevAlert = '';
 let prevBlocked = '';
 let prevErr = '';
 
+let statusPolling = false;
 async function poll() {
+  if (statusPolling || document.hidden) return;
+  statusPolling = true;
   try {
-    const s = await (await fetch('/api/status')).json();
+    const response = await fetch('/api/status', {signal:AbortSignal.timeout(2500), cache:'no-store'});
+    if (!response.ok) throw Error('HTTP '+response.status);
+    const s = await response.json();
     renderImu(s.imu);
     $('#link').textContent = 'connected';
     $('#link').className = '';
@@ -754,10 +645,10 @@ async function poll() {
     $('#warn').style.display = s.blocked ? 'block' : 'none';
     const blockedKey = s.blocked ? (s.blocked_by || []).join(',') : '';
     const blockedText = blockedKey === 'front'
-      ? 'Перешкода спереду: рух у її бік заблоковано'
+      ? 'Front obstacle: movement towards it blocked'
       : blockedKey === 'rear'
-        ? 'Перешкода ззаду: рух у її бік заблоковано'
-        : 'Перешкоди спереду та ззаду: рух заблоковано';
+        ? 'Rear obstacle: movement towards it blocked'
+        : 'Front and rear obstacles: movement blocked';
     $('#warn').textContent = blockedText;
 
     const alertText = s.alert.join(' + ');
@@ -785,7 +676,8 @@ async function poll() {
       status:'connection lost',
       error:'No current server data'
     });
-  }
+    keys.clear(); mark();
+  } finally { statusPolling = false; }
 }
 setInterval(poll, 500);
 poll();
@@ -910,7 +802,7 @@ function drawMap(m) {
   ctx.font = '13px system-ui';
   ctx.fillText('0', X(0) + 7, Y(0) - 7);
   ctx.fillRect(X(0) - 3, Y(0) - 3, 6, 6);
-  ctx.fillText('Сітка: ' + step.toFixed(0) + ' см · X → · Y ↑', 12, h - 10);
+  ctx.fillText('Grid: ' + step.toFixed(0) + ' cm · X → · Y ↑', 12, h - 10);
 
   ctx.save();
   ctx.translate(X(m.x_cm), Y(m.y_cm));
@@ -926,15 +818,15 @@ function drawMap(m) {
   ctx.restore();
 
   $('#mapPose').textContent =
-    `X ${m.x_cm.toFixed(1)} см · Y ${m.y_cm.toFixed(1)} см · ` +
-    `кут ${m.heading_deg.toFixed(1)}° · шлях ${m.distance_cm.toFixed(1)} см`;
+    `X ${m.x_cm.toFixed(1)} cm · Y ${m.y_cm.toFixed(1)} cm · ` +
+    `angle ${m.heading_deg.toFixed(1)}° · path ${m.distance_cm.toFixed(1)} cm`;
 
   $('#mapMessage').textContent = m.reason;
   $('#mapMessage').style.color = m.valid ? 'var(--go)' : 'var(--amb)';
 }
 
 async function pollMap() {
-  if (mapPolling || document.hidden) return;
+  if (mapPolling || document.hidden || !$('#operate').classList.contains('on')) return;
   mapPolling = true;
 
   const controller = new AbortController();
@@ -949,7 +841,7 @@ async function pollMap() {
     drawMap(await response.json());
   } catch (error) {
     $('#mapMessage').textContent =
-      'Немає свіжих даних мапи. Показано останній отриманий шлях.';
+      'No fresh map data. Showing the last received path.';
     $('#mapMessage').style.color = 'var(--bad)';
   } finally {
     clearTimeout(timeout);
@@ -973,7 +865,7 @@ $('#mapReset').onclick = async () => {
   }
 };
 
-setInterval(pollMap, 200);
+setInterval(pollMap, 1000);
 pollMap();
 </script>
 <script src="/monitor.js"></script>

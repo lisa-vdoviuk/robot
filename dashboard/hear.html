@@ -36,7 +36,7 @@ el('start').onclick=async()=>{
 };
 async function poll(){
  try{
-  const r=await fetch('/api/hear/status',{cache:'no-store'});if(!r.ok)throw Error('Status unavailable');const s=await r.json();
+  const r=await fetch('/api/hear/status',{cache:'no-store',signal:AbortSignal.timeout(2500)});if(!r.ok)throw Error('Status unavailable');const s=await r.json();
   el('start').disabled=s.active||submitting||!s.vad_available;
   el('vad').textContent=!s.vad_available?'VAD unavailable: '+s.vad_error:!s.active?'VAD idle — press Record':s.speech?'Speech detected':'No confirmed speech';
   if(s.active && s.speech_score != null) el('vad').textContent += ' | score '+s.speech_score.toFixed(3);
@@ -49,6 +49,6 @@ async function poll(){
   for(const x of s.recordings){const tr=document.createElement('tr'),m=x.metrics||{};
    for(const v of [x.scene,x.status,m.duration_s??'-',m.rms_dbfs??'-',m.peak_dbfs??'-',x.vad?x.vad.events.length:'not analysed']){const td=document.createElement('td');td.textContent=v;tr.appendChild(td);}el('rows').appendChild(tr);}
  }catch(e){el('status').textContent='Connection unavailable; an active recording continues on the Pi.';}
- setTimeout(poll,500);
+ setTimeout(poll,1500);
 }poll();
 </script></html>

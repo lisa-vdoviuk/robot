@@ -992,11 +992,7 @@ def api_talk_stop():
 def api_status():
     mem, cpu = sysinfo()
 
-    temperature = (
-        sh(["vcgencmd", "measure_temp"])
-        .replace("temp=", "")
-        .replace("'C", "")
-    )
+    temperature = S.get("temperature_cache", "")
     front_cm, rear_cm = sonar_ranges()
 
     return jsonify(
@@ -1011,9 +1007,7 @@ def api_status():
         fps=S["fps"],
         cam=S["cam"],
         temp=temperature,
-        throttled=sh(
-            ["vcgencmd", "get_throttled"]
-        ).replace("throttled=", ""),
+        throttled=S.get("throttled_cache", "unknown"),
         cpu=cpu,
         mem=mem,
         drive=[S["l"], S["r"]],
@@ -1139,6 +1133,9 @@ install_pilot(globals())
 from hear import install as install_hear
 install_hear(globals())
 
+from talk_stream import install as install_talk_stream
+install_talk_stream(globals())
+
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
@@ -1147,7 +1144,14 @@ if __name__ == "__main__":
     atexit.register(cleanup)
     imu.start()
 
+    def firmware_monitor():
+        while True:
+            S["throttled_cache"] = sh(["vcgencmd", "get_throttled"]).replace("throttled=", "")
+            S["temperature_cache"] = sh(["vcgencmd", "measure_temp"]).replace("temp=", "").replace("'C", "")
+            time.sleep(5)
+
     for worker in (
+        firmware_monitor,
         control,
         sonar_loop,
         camera_loop,

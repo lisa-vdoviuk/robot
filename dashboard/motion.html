@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -22,65 +22,66 @@ pre{white-space:pre-wrap;background:#12202b;padding:10px}
 small{color:#b7cad5}
 a{color:#58d9c8}
 </style>
+<link rel="stylesheet" href="/mission.css">
 </head>
 <body>
-<h3>Калібрування руху</h3>
+<h3>Motion calibration</h3>
 <small>
-  Рівна вільна ділянка. IMU відкалібрований, сонари увімкнені.
-  Почни з 0,5 с. Не перемикай вкладку під час заїзду.
+  Use a level, clear area. Calibrate the IMU and enable sonar protection.
+  Start with 0.5 s. Keep this tab open during the run.
 </small>
 
 <div>
   <label>
-    Напрямок
+    Direction
     <select id="direction">
-      <option value="forward">Вперед</option>
-      <option value="reverse">Назад</option>
+      <option value="forward">Forward</option>
+      <option value="reverse">Reverse</option>
     </select>
   </label>
   <label>
-    Потужність %
+    Power %
     <input id="power" type="number"
            min="20" max="60" step="5" value="40">
   </label>
   <label>
-    Час, с
+    Duration, s
     <input id="duration" type="number"
            min="0.5" max="3" step="0.5" value="0.5">
   </label>
   <label>
-    Підлога
+    Surface
     <input id="surface" value="tile">
   </label>
   <label>
-    Батарея / серія
-    <input id="battery" placeholder="Наприклад: заряджена, серія A">
+    Battery / session
+    <input id="battery" placeholder="Example: fully charged, session A">
   </label>
 </div>
 
-<button id="start">Почати заїзд</button>
+<button id="start">Start run</button>
 <button id="stop">STOP</button>
-<pre id="result">Очікування...</pre>
+<pre id="result">Waiting...</pre>
 
 <div>
   <label>
-    Відстань, см
+    Distance, cm
     <input id="distance" type="number" min="0.1" step="0.1">
   </label>
   <label>
-    Примітка
-    <input id="notes" placeholder="Ковзання, зміщення тощо">
+    Notes
+    <input id="notes" placeholder="Slippage, drift, etc.">
   </label>
 </div>
 
-<button id="save">Зберегти вимірювання</button>
-<button id="discard">Відкинути / наступний</button>
-<a href="/api/motion/export" target="_blank">Експорт JSON</a>
+<button id="save">Save measurement</button>
+<button id="discard">Discard / next</button>
+<a href="/api/motion/export" target="_blank">Export JSON</a>
 <pre id="message"></pre>
 
 <small>
-  Швидкість тут — відстань до повної зупинки / час команди.
-  Модель діє лише для перевірених умов, потужності та тривалості.
+  Speed here is distance until full stop divided by command duration.
+  The model applies only to the tested conditions, power and duration.
 </small>
 
 <script>
@@ -93,12 +94,13 @@ let polling = false;
 async function post(url, data = {}) {
   const response = await fetch(url, {
     method:'POST',
+    signal:AbortSignal.timeout(url.endsWith('/heartbeat') ? 700 : 2500),
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(data)
   });
   const result = await response.json();
   if (!response.ok || !result.ok) {
-    throw Error(result.msg || 'Запит відхилено');
+    throw Error(result.msg || 'Request rejected');
   }
   return result;
 }
@@ -114,15 +116,15 @@ function render() {
   });
 
   $('result').textContent = run
-    ? `Стан: ${run.state}
-Причина: ${run.reason || '-'}
-Напрямок: ${run.direction}
-Час команди: ${run.elapsed_s.toFixed(3)} с
-Зміна кута: ${run.yaw_delta_deg.toFixed(2)}°
-Максимальне відхилення: ${run.max_yaw_deg.toFixed(2)}°
-Команди L/R: ${JSON.stringify(run.applied)}
-Збережено: ${run.saved ? 'так' : 'ні'}`
-    : 'Готово до заїзду';
+    ? `State: ${run.state}
+Reason: ${run.reason || '-'}
+Direction: ${run.direction}
+Command duration: ${run.elapsed_s.toFixed(3)} s
+Angle change: ${run.yaw_delta_deg.toFixed(2)}°
+Maximum deviation: ${run.max_yaw_deg.toFixed(2)}°
+L/R commands: ${JSON.stringify(run.applied)}
+Saved: ${run.saved ? 'yes' : 'no'}`
+    : 'Ready for a run';
 }
 
 async function action(fn) {
@@ -140,7 +142,7 @@ async function action(fn) {
 
 $('start').onclick = () => action(async () => {
   if (parent !== window && parent.location.hash !== '#tests') {
-    throw Error('Відкрий Tests');
+    throw Error('Open Tests');
   }
 
   const result = await post('/api/motion/start', {
@@ -154,7 +156,7 @@ $('start').onclick = () => action(async () => {
   run = result.run;
   owned = run.id;
   $('distance').value = '';
-  $('message').textContent = 'Заїзд розпочато';
+  $('message').textContent = 'Run started';
 });
 
 async function stop() {
@@ -179,14 +181,14 @@ $('save').onclick = () => action(async () => {
   const std = model.std_cm_s == null
     ? '-' : model.std_cm_s.toFixed(2);
 
-  $('message').textContent = `Збережено.
-Придатний для моделі: ${run.usable ? 'так' : 'ні'}.
-Повторів у цих умовах: ${model.count}.
-Середня швидкість: ${mean} см/с.
-Розкид: ${std} см/с.
+  $('message').textContent = `Saved.
+Usable for the model: ${run.usable ? 'yes' : 'no'}.
+Repeats under these conditions: ${model.count}.
+Mean speed: ${mean} cm/s.
+Standard deviation: ${std} cm/s.
 ${model.ready
-  ? 'Є щонайменше 3 повтори.'
-  : 'Потрібні щонайменше 3 придатні повтори.'}`;
+  ? 'At least 3 repeats available.'
+  : 'At least 3 usable repeats are required.'}`;
 });
 
 $('discard').onclick = () => action(async () => {
@@ -203,9 +205,9 @@ async function poll() {
 
   try {
     const response = await fetch('/api/motion/status', {
-      cache:'no-store'
+      cache:'no-store', signal:AbortSignal.timeout(2500)
     });
-    if (!response.ok) throw Error('Немає зв’язку');
+    if (!response.ok) throw Error('Connection unavailable');
 
     const result = await response.json();
 
@@ -220,7 +222,7 @@ async function poll() {
     render();
 
   } catch (error) {
-    $('message').textContent = 'Немає зв’язку із сервером';
+    $('message').textContent = 'Server connection unavailable';
   } finally {
     polling = false;
   }
