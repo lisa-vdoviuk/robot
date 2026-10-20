@@ -115,6 +115,10 @@ class Recorder:
                 dropped=r["dropped"] if r else 0,
                 latest=self.latest,
                 recordings=self.recordings(),
+                deleted_recordings=[
+                    row for row in self.recordings(include_deleted=True)
+                    if row.get("deleted")
+                ],
                 export=dict(self.export),
             )
 
@@ -230,7 +234,35 @@ class Recorder:
 
             return identity
 
-    def recordings(self):
+    def set_deleted(self, identity, deleted):
+        """Reversible exclusion; retain raw data and persist across restarts."""
+        with self.lock:
+            if self.run or self.export["state"] == "building":
+                raise ValueError("Finish recording/finalization/export first")
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", identity):
+                raise ValueError("Invalid recording ID")
+            folder = self.root / identity
+            if (folder.is_symlink() or not folder.is_dir()
+                    or folder.resolve().parent != self.root.resolve()):
+                raise ValueError("Unknown recording")
+            meta_path = folder / "metadata.json"
+            marker = folder / "_deleted.json"
+            if (meta_path.is_symlink() or marker.is_symlink()
+                    or Path(str(marker) + ".tmp").is_symlink()):
+                raise ValueError("Invalid recording path")
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if meta.get("purpose") != "yolo_dataset":
+                raise ValueError("Only YOLO dataset recordings can be deleted here")
+            if deleted:
+                write_json(marker, dict(deleted=True, changed_utc=time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+            elif marker.exists():
+                marker.unlink()
+            self.export_signature = self.export_path = None
+            self.export = dict(state="idle", id=None, done=0, total=0, error="")
+            return dict(ok=True, id=identity, deleted=deleted)
+
+    def recordings(self, include_deleted=False):
         rows = []
         for folder in sorted(self.root.iterdir()):
             if not folder.is_dir() or folder.is_symlink() or folder.name.startswith('_'):
@@ -238,6 +270,9 @@ class Recorder:
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', folder.name):
                 continue
             meta_path = folder / 'metadata.json'
+            deleted = (folder / "_deleted.json").exists()
+            if deleted and not include_deleted:
+                continue
             if not meta_path.is_file():
                 continue
             try:
@@ -248,6 +283,7 @@ class Recorder:
                 rows.append(dict(
                     id=folder.name, scene=meta.get('scene', '?'),
                     purpose=meta.get('purpose', 'pilot'), dataset=meta.get('dataset'),
+                    deleted=deleted,
                     expected=meta.get('expected', '?'),
                     seconds=report.get('interval_seconds') if report else None,
                     predictions=report.get('successful_predictions') if report else None,
@@ -1375,8 +1411,35 @@ def install(g):
         path = recorder.root / '_exports' / (identity + '.zip')
         if not path.is_file():
             return jsonify(ok=False, msg='Archive not ready'), 404
-        return send_file(path, as_attachment=True,
-                         download_name='see_pilot_all_' + identity[:8] + '.zip')
+        with recorder.lock:
+            try:
+                with zipfile.ZipFile(path) as archive:
+                    manifest = json.loads(archive.read("manifest.json"))
+                included = {row["id"] for row in manifest["recordings"]}
+                available = {row["id"] for row in recorder.recordings()}
+                if not included.issubset(available):
+                    return jsonify(ok=False, msg="Archive contains removed recordings. Build a new ZIP."), 409
+            except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+                return jsonify(ok=False, msg="Archive cannot be verified. Build a new ZIP."), 409
+            return send_file(path, as_attachment=True,
+                             download_name='see_pilot_all_' + identity[:8] + '.zip')
+
+    def dataset_delete(identity):
+        try:
+            return jsonify(recorder.set_deleted(identity, True))
+        except (ValueError, OSError) as error:
+            return jsonify(ok=False, msg=str(error)), 409
+
+    def dataset_restore(identity):
+        try:
+            return jsonify(recorder.set_deleted(identity, False))
+        except (ValueError, OSError) as error:
+            return jsonify(ok=False, msg=str(error)), 409
+
+    app.add_url_rule("/api/dataset/<identity>/delete", "dataset_delete",
+                     dataset_delete, methods=["POST"])
+    app.add_url_rule("/api/dataset/<identity>/restore", "dataset_restore",
+                     dataset_restore, methods=["POST"])
 
     app.add_url_rule('/api/pilot/export-all', 'pilot_export_all', export_start, methods=['POST'])
     app.add_url_rule('/api/pilot/export-all/<identity>', 'pilot_export_download', export_download)

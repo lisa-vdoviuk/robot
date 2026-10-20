@@ -57,6 +57,13 @@ Changing tabs does not cancel a recording. Wait for finalization before download
 <thead><tr><th>Scene / ID</th><th>Seconds</th><th>State</th><th>Files</th></tr></thead>
 <tbody id="history"></tbody>
 </table></div>
+<details id="trashPanel">
+<summary>Deleted recordings <span id="trashCount">0</span></summary>
+<small>Deleted takes are excluded from new ZIP exports. Restore is available
+after restarting the server. Audio/video files remain on the Pi; deleting here
+does not free disk space or change ZIP files already downloaded.</small>
+<div id="trashList"></div>
+</details>
 <details><summary>View recording report</summary>
 <pre id="report">Click Report in the table.</pre></details>
 <script>
@@ -73,6 +80,9 @@ function buttons(){
   $('stop').disabled=pending||!recording;
   $('all').disabled=pending||!current||recording||exporting||!current.recordings.length;
   ['scene','seconds','expected','description','subject','session','pose','lighting','distance_m','take'].forEach(k=>$(k).disabled=pending||recording||exporting);
+  document.querySelectorAll('[data-manage-recording]').forEach(b=>{
+    b.disabled=pending||!current||recording||exporting;
+  });
 }
 $('pose').onchange=()=>{ $('expected').value=$('pose').value==='negative'?'no_visible_person':'visible_person'; };
 $('scene').addEventListener('input',()=>{
@@ -118,8 +128,27 @@ async function showReport(row){
     const r=await fetch('/api/pilot/file/'+encodeURIComponent(row.id)+'/report.json');
     if(!r.ok)throw Error('Report unavailable');
     $('report').textContent=JSON.stringify(await r.json(),null,2);
-    document.querySelector('details').open=true;
+    $('report').closest('details').open=true;
   }catch(e){$('message').textContent=e.message;}
+}
+function manageRecording(row, restore){
+  return act(async()=>{
+    await post('/api/dataset/'+encodeURIComponent(row.id)+(restore?'/restore':'/delete'));
+    autoDownload=null;
+    $('download').hidden=true;
+    $('report').textContent='Click Report in the table.';
+    $('message').textContent=restore
+      ? 'Restored: '+row.id
+      : 'Deleted: '+row.id+'. You can restore it under Deleted recordings.';
+  });
+}
+function manageButton(row, restore){
+  const button=document.createElement('button');
+  button.textContent=restore?'Restore':'Delete';
+  button.dataset.manageRecording='true';
+  if(!restore)button.style.color='#ff8b82';
+  button.onclick=()=>manageRecording(row,restore);
+  return button;
 }
 function renderHistory(){
   const rows=current.recordings;
@@ -140,8 +169,19 @@ function renderHistory(){
       const b=document.createElement('button');b.textContent='Report';b.onclick=()=>showReport(row);
       files.append(b,fileLink(row,'bundle.zip','ZIP'),fileLink(row,'raw.avi','Video'));
     }
+    files.append(manageButton(row,false));
     tr.append(name,duration,state,files);$('history').append(tr);
   });
+  const deleted=(current.deleted_recordings||[]).filter(r=>r.purpose==='yolo_dataset');
+  $('trashCount').textContent='('+deleted.length+')';
+  $('trashList').replaceChildren();
+  for(const row of deleted){
+    const line=document.createElement('div');
+    const label=document.createElement('span');
+    label.textContent=row.scene+' — '+row.id+' ';
+    line.append(label,manageButton(row,true));
+    $('trashList').append(line);
+  }
 }
 async function poll(){
   if(polling)return;polling=true;
